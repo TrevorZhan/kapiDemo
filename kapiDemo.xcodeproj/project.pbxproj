@@ -1,0 +1,587 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3657294E2F76C113008EAD28 /* kapiDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3657294D2F76C113008EAD28 /* kapiDemoApp.swift */; };
+		365729502F76C113008EAD28 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3657294F2F76C113008EAD28 /* ContentView.swift */; };
+		365729522F76C115008EAD28 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 365729512F76C115008EAD28 /* Assets.xcassets */; };
+		365729552F76C115008EAD28 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 365729542F76C115008EAD28 /* Preview Assets.xcassets */; };
+		3657295F2F76C115008EAD28 /* kapiDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3657295E2F76C115008EAD28 /* kapiDemoTests.swift */; };
+		365729692F76C115008EAD28 /* kapiDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365729682F76C115008EAD28 /* kapiDemoUITests.swift */; };
+		3657296B2F76C115008EAD28 /* kapiDemoUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3657296A2F76C115008EAD28 /* kapiDemoUITestsLaunchTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3657295B2F76C115008EAD28 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 365729422F76C113008EAD28 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 365729492F76C113008EAD28;
+			remoteInfo = kapiDemo;
+		};
+		365729652F76C115008EAD28 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 365729422F76C113008EAD28 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 365729492F76C113008EAD28;
+			remoteInfo = kapiDemo;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		3657294A2F76C113008EAD28 /* kapiDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = kapiDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3657294D2F76C113008EAD28 /* kapiDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoApp.swift; sourceTree = "<group>"; };
+		3657294F2F76C113008EAD28 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		365729512F76C115008EAD28 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		365729542F76C115008EAD28 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		3657295A2F76C115008EAD28 /* kapiDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kapiDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3657295E2F76C115008EAD28 /* kapiDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoTests.swift; sourceTree = "<group>"; };
+		365729642F76C115008EAD28 /* kapiDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kapiDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		365729682F76C115008EAD28 /* kapiDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoUITests.swift; sourceTree = "<group>"; };
+		3657296A2F76C115008EAD28 /* kapiDemoUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoUITestsLaunchTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		365729472F76C113008EAD28 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365729572F76C115008EAD28 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365729612F76C115008EAD28 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		365729412F76C113008EAD28 = {
+			isa = PBXGroup;
+			children = (
+				3657294C2F76C113008EAD28 /* kapiDemo */,
+				3657295D2F76C115008EAD28 /* kapiDemoTests */,
+				365729672F76C115008EAD28 /* kapiDemoUITests */,
+				3657294B2F76C113008EAD28 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3657294B2F76C113008EAD28 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3657294A2F76C113008EAD28 /* kapiDemo.app */,
+				3657295A2F76C115008EAD28 /* kapiDemoTests.xctest */,
+				365729642F76C115008EAD28 /* kapiDemoUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3657294C2F76C113008EAD28 /* kapiDemo */ = {
+			isa = PBXGroup;
+			children = (
+				3657294D2F76C113008EAD28 /* kapiDemoApp.swift */,
+				3657294F2F76C113008EAD28 /* ContentView.swift */,
+				365729512F76C115008EAD28 /* Assets.xcassets */,
+				365729532F76C115008EAD28 /* Preview Content */,
+			);
+			path = kapiDemo;
+			sourceTree = "<group>";
+		};
+		365729532F76C115008EAD28 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				365729542F76C115008EAD28 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		3657295D2F76C115008EAD28 /* kapiDemoTests */ = {
+			isa = PBXGroup;
+			children = (
+				3657295E2F76C115008EAD28 /* kapiDemoTests.swift */,
+			);
+			path = kapiDemoTests;
+			sourceTree = "<group>";
+		};
+		365729672F76C115008EAD28 /* kapiDemoUITests */ = {
+			isa = PBXGroup;
+			children = (
+				365729682F76C115008EAD28 /* kapiDemoUITests.swift */,
+				3657296A2F76C115008EAD28 /* kapiDemoUITestsLaunchTests.swift */,
+			);
+			path = kapiDemoUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		365729492F76C113008EAD28 /* kapiDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3657296E2F76C115008EAD28 /* Build configuration list for PBXNativeTarget "kapiDemo" */;
+			buildPhases = (
+				365729462F76C113008EAD28 /* Sources */,
+				365729472F76C113008EAD28 /* Frameworks */,
+				365729482F76C113008EAD28 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = kapiDemo;
+			productName = kapiDemo;
+			productReference = 3657294A2F76C113008EAD28 /* kapiDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+		365729592F76C115008EAD28 /* kapiDemoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 365729712F76C115008EAD28 /* Build configuration list for PBXNativeTarget "kapiDemoTests" */;
+			buildPhases = (
+				365729562F76C115008EAD28 /* Sources */,
+				365729572F76C115008EAD28 /* Frameworks */,
+				365729582F76C115008EAD28 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3657295C2F76C115008EAD28 /* PBXTargetDependency */,
+			);
+			name = kapiDemoTests;
+			productName = kapiDemoTests;
+			productReference = 3657295A2F76C115008EAD28 /* kapiDemoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		365729632F76C115008EAD28 /* kapiDemoUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 365729742F76C115008EAD28 /* Build configuration list for PBXNativeTarget "kapiDemoUITests" */;
+			buildPhases = (
+				365729602F76C115008EAD28 /* Sources */,
+				365729612F76C115008EAD28 /* Frameworks */,
+				365729622F76C115008EAD28 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				365729662F76C115008EAD28 /* PBXTargetDependency */,
+			);
+			name = kapiDemoUITests;
+			productName = kapiDemoUITests;
+			productReference = 365729642F76C115008EAD28 /* kapiDemoUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		365729422F76C113008EAD28 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					365729492F76C113008EAD28 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+					365729592F76C115008EAD28 = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = 365729492F76C113008EAD28;
+					};
+					365729632F76C115008EAD28 = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = 365729492F76C113008EAD28;
+					};
+				};
+			};
+			buildConfigurationList = 365729452F76C113008EAD28 /* Build configuration list for PBXProject "kapiDemo" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 365729412F76C113008EAD28;
+			productRefGroup = 3657294B2F76C113008EAD28 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				365729492F76C113008EAD28 /* kapiDemo */,
+				365729592F76C115008EAD28 /* kapiDemoTests */,
+				365729632F76C115008EAD28 /* kapiDemoUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		365729482F76C113008EAD28 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				365729552F76C115008EAD28 /* Preview Assets.xcassets in Resources */,
+				365729522F76C115008EAD28 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365729582F76C115008EAD28 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365729622F76C115008EAD28 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		365729462F76C113008EAD28 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				365729502F76C113008EAD28 /* ContentView.swift in Sources */,
+				3657294E2F76C113008EAD28 /* kapiDemoApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365729562F76C115008EAD28 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3657295F2F76C115008EAD28 /* kapiDemoTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365729602F76C115008EAD28 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3657296B2F76C115008EAD28 /* kapiDemoUITestsLaunchTests.swift in Sources */,
+				365729692F76C115008EAD28 /* kapiDemoUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3657295C2F76C115008EAD28 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 365729492F76C113008EAD28 /* kapiDemo */;
+			targetProxy = 3657295B2F76C115008EAD28 /* PBXContainerItemProxy */;
+		};
+		365729662F76C115008EAD28 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 365729492F76C113008EAD28 /* kapiDemo */;
+			targetProxy = 365729652F76C115008EAD28 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3657296C2F76C115008EAD28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3657296D2F76C115008EAD28 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		3657296F2F76C115008EAD28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"kapiDemo/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		365729702F76C115008EAD28 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"kapiDemo/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		365729722F76C115008EAD28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/kapiDemo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/kapiDemo";
+			};
+			name = Debug;
+		};
+		365729732F76C115008EAD28 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/kapiDemo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/kapiDemo";
+			};
+			name = Release;
+		};
+		365729752F76C115008EAD28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemoUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = kapiDemo;
+			};
+			name = Debug;
+		};
+		365729762F76C115008EAD28 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemoUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = kapiDemo;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		365729452F76C113008EAD28 /* Build configuration list for PBXProject "kapiDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3657296C2F76C115008EAD28 /* Debug */,
+				3657296D2F76C115008EAD28 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3657296E2F76C115008EAD28 /* Build configuration list for PBXNativeTarget "kapiDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3657296F2F76C115008EAD28 /* Debug */,
+				365729702F76C115008EAD28 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		365729712F76C115008EAD28 /* Build configuration list for PBXNativeTarget "kapiDemoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				365729722F76C115008EAD28 /* Debug */,
+				365729732F76C115008EAD28 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		365729742F76C115008EAD28 /* Build configuration list for PBXNativeTarget "kapiDemoUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				365729752F76C115008EAD28 /* Debug */,
+				365729762F76C115008EAD28 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 365729422F76C113008EAD28 /* Project object */;
+}
