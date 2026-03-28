@@ -97,7 +97,6 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         error: Error?
     ) {
         if let error = error {
-            print("DEBUG: Capture error: \(error)")
             captureCompletion?(.failure(error))
             captureCompletion = nil
             return
@@ -109,15 +108,12 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
 
         if #available(iOS 14.3, *) {
             if photo.isRawPhoto {
-                print("DEBUG: Got RAW photo")
                 imageData = photo.fileDataRepresentation()
                 isRAW = true
             } else if isProRAWSupported {
                 // This is the processed companion photo — skip it
-                print("DEBUG: Skipping processed companion photo")
                 return
             } else {
-                print("DEBUG: Got JPEG/HEIC photo")
                 imageData = photo.fileDataRepresentation()
                 isRAW = false
             }
@@ -132,21 +128,15 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             return
         }
 
-        // Get orientation from photo metadata
-        let cgOrientation = photo.metadata[String(kCGImagePropertyOrientation)] as? UInt32
-        let orientation = cgOrientation.flatMap { CGImagePropertyOrientation(rawValue: $0) }
-            ?? .right // Default to .right for portrait photos
-
         // Process and save
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                let processedImage = try ImageProcessor.processImage(data: data, isRAW: isRAW, orientation: orientation)
+                let processedImage = try ImageProcessor.processImage(data: data, isRAW: isRAW)
                 PhotoSaver.save(image: processedImage) { result in
                     self?.captureCompletion?(result)
                     self?.captureCompletion = nil
                 }
             } catch {
-                print("DEBUG: Processing error: \(error)")
                 self?.captureCompletion?(.failure(error))
                 self?.captureCompletion = nil
             }

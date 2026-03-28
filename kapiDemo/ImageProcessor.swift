@@ -10,27 +10,28 @@ enum ImageProcessor {
 
     // MARK: - Process captured image data
 
-    static func processImage(data: Data, isRAW: Bool, orientation: CGImagePropertyOrientation = .right) throws -> UIImage {
+    static func processImage(data: Data, isRAW: Bool) throws -> UIImage {
         // 1. Decode
         let decoded: CIImage
         let imageOrientation: CGImagePropertyOrientation
 
         if isRAW {
             decoded = try decodeRAW(data: data)
-            // CIRAWFilter already applies orientation to the pixels,
-            // so read orientation from the decoded CIImage itself (usually .up)
-            if let ciOriValue = decoded.properties[kCGImagePropertyOrientation as String] as? UInt32,
-               let ciOri = CGImagePropertyOrientation(rawValue: ciOriValue) {
-                imageOrientation = ciOri
-            } else {
-                imageOrientation = .up // CIRAWFilter already rotated the pixels
-            }
+            // CIRAWFilter already rotates pixels to correct orientation
+            imageOrientation = .up
         } else {
             guard let ciImage = CIImage(data: data) else {
                 throw ProcessorError.decodeFailed
             }
             decoded = ciImage
-            imageOrientation = orientation
+            // CIImage(data:) does NOT rotate pixels — orientation is stored as metadata.
+            // Read it and pass to UIImage so it displays correctly.
+            if let ciOriValue = decoded.properties[kCGImagePropertyOrientation as String] as? UInt32,
+               let ciOri = CGImagePropertyOrientation(rawValue: ciOriValue) {
+                imageOrientation = ciOri
+            } else {
+                imageOrientation = .right // Default for portrait photos
+            }
         }
 
         // 2. Apply LUT
@@ -38,17 +39,6 @@ enum ImageProcessor {
 
         // 3. Render final UIImage with correct orientation
         return try renderImage(styled, orientation: imageOrientation)
-    }
-
-    // MARK: - Read orientation from image data via CGImageSource
-
-    private static func readOrientation(from data: Data) -> CGImagePropertyOrientation? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let orientationValue = properties[kCGImagePropertyOrientation] as? UInt32 else {
-            return nil
-        }
-        return CGImagePropertyOrientation(rawValue: orientationValue)
     }
 
     // MARK: - Decode RAW using CIRAWFilter
