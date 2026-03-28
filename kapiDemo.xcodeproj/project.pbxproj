@@ -40,12 +40,6 @@
 /* Begin PBXFileReference section */
 		3657294A2F76C113008EAD28 /* kapiDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = kapiDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3657294D2F76C113008EAD28 /* kapiDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoApp.swift; sourceTree = "<group>"; };
-		AA0000012F76C200008EAD28 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
-		AA0000032F76C200008EAD28 /* CameraManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraManager.swift; sourceTree = "<group>"; };
-		AA0000052F76C200008EAD28 /* ImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessor.swift; sourceTree = "<group>"; };
-		AA0000072F76C200008EAD28 /* PhotoSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSaver.swift; sourceTree = "<group>"; };
-		AA0000092F76C200008EAD28 /* 典雅绿调.cube */ = {isa = PBXFileReference; lastKnownFileType = text; path = "典雅绿调.cube"; sourceTree = "<group>"; };
-		AA00000B2F76C200008EAD28 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		365729512F76C115008EAD28 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		365729542F76C115008EAD28 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		3657295A2F76C115008EAD28 /* kapiDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kapiDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -53,6 +47,12 @@
 		365729642F76C115008EAD28 /* kapiDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kapiDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		365729682F76C115008EAD28 /* kapiDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoUITests.swift; sourceTree = "<group>"; };
 		3657296A2F76C115008EAD28 /* kapiDemoUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = kapiDemoUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		AA0000012F76C200008EAD28 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		AA0000032F76C200008EAD28 /* CameraManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraManager.swift; sourceTree = "<group>"; };
+		AA0000052F76C200008EAD28 /* ImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessor.swift; sourceTree = "<group>"; };
+		AA0000072F76C200008EAD28 /* PhotoSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSaver.swift; sourceTree = "<group>"; };
+		AA0000092F76C200008EAD28 /* 典雅绿调.cube */ = {isa = PBXFileReference; lastKnownFileType = text; path = "典雅绿调.cube"; sourceTree = "<group>"; };
+		AA00000B2F76C200008EAD28 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -440,6 +440,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"kapiDemo/Preview Content\"";
+				DEVELOPMENT_TEAM = 994Z75A993;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = kapiDemo/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access to capture ProRAW and standard photos.";
@@ -469,6 +470,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"kapiDemo/Preview Content\"";
+				DEVELOPMENT_TEAM = 994Z75A993;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = kapiDemo/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access to capture ProRAW and standard photos.";

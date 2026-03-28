@@ -10,7 +10,7 @@ enum ImageProcessor {
 
     // MARK: - Process captured image data
 
-    static func processImage(data: Data, isRAW: Bool) throws -> UIImage {
+    static func processImage(data: Data, isRAW: Bool, orientation: CGImagePropertyOrientation = .right) throws -> UIImage {
         // 1. Decode
         let decoded: CIImage
         if isRAW {
@@ -25,8 +25,8 @@ enum ImageProcessor {
         // 2. Apply LUT
         let styled = try applyLUT(to: decoded)
 
-        // 3. Render final UIImage
-        return try renderImage(styled)
+        // 3. Render final UIImage with correct orientation
+        return try renderImage(styled, orientation: orientation)
     }
 
     // MARK: - Decode RAW using CIRAWFilter
@@ -135,12 +135,31 @@ enum ImageProcessor {
 
     // MARK: - Render CIImage → UIImage
 
-    private static func renderImage(_ ciImage: CIImage) throws -> UIImage {
+    private static func renderImage(_ ciImage: CIImage, orientation: CGImagePropertyOrientation = .right) throws -> UIImage {
         let context = CIContext()
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
             throw ProcessorError.renderFailed
         }
-        return UIImage(cgImage: cgImage)
+        // Convert CGImagePropertyOrientation → UIImage.Orientation
+        let uiOrientation = UIImage.Orientation(orientation)
+        return UIImage(cgImage: cgImage, scale: 1.0, orientation: uiOrientation)
+    }
+}
+
+// MARK: - CGImagePropertyOrientation → UIImage.Orientation
+
+extension UIImage.Orientation {
+    init(_ cgOrientation: CGImagePropertyOrientation) {
+        switch cgOrientation {
+        case .up:            self = .up
+        case .upMirrored:    self = .upMirrored
+        case .down:          self = .down
+        case .downMirrored:  self = .downMirrored
+        case .left:          self = .left
+        case .leftMirrored:  self = .leftMirrored
+        case .right:         self = .right
+        case .rightMirrored: self = .rightMirrored
+        }
     }
 }
 
