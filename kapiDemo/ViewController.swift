@@ -11,6 +11,7 @@ class ViewController: UIViewController {
     private let cameraManager = CameraManager()
     private let statusLabel = UILabel()
     private let captureButton = UIButton(type: .system)
+    private let previewContainer = UIView()
     private var previewLayer: AVCaptureVideoPreviewLayer?
 
     override func viewDidLoad() {
@@ -22,12 +23,19 @@ class ViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
+        previewLayer?.frame = previewContainer.bounds
     }
 
     // MARK: - UI Setup
 
     private func setupUI() {
+        // Preview container — sits above the capture button
+        previewContainer.translatesAutoresizingMaskIntoConstraints = false
+        previewContainer.backgroundColor = .black
+        previewContainer.layer.cornerRadius = 12
+        previewContainer.clipsToBounds = true
+        view.addSubview(previewContainer)
+
         // Status label
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.textColor = .white
@@ -39,22 +47,29 @@ class ViewController: UIViewController {
         statusLabel.clipsToBounds = true
         view.addSubview(statusLabel)
 
-        // Capture button
+        // Capture button — white circle with black stroke
         captureButton.translatesAutoresizingMaskIntoConstraints = false
-        captureButton.setTitle("Capture", for: .normal)
-        captureButton.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        captureButton.setTitleColor(.white, for: .normal)
-        captureButton.backgroundColor = UIColor.systemRed
+        captureButton.backgroundColor = .white
         captureButton.layer.cornerRadius = 35
+        captureButton.layer.borderWidth = 3
+        captureButton.layer.borderColor = UIColor.black.cgColor
         captureButton.addTarget(self, action: #selector(captureButtonTapped), for: .touchUpInside)
         view.addSubview(captureButton)
 
         NSLayoutConstraint.activate([
-            statusLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            // Status label: top of safe area
+            statusLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
             statusLabel.heightAnchor.constraint(equalToConstant: 40),
 
+            // Preview container: between label and button, 4:3 aspect ratio
+            previewContainer.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 16),
+            previewContainer.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -16),
+            previewContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            previewContainer.widthAnchor.constraint(equalTo: previewContainer.heightAnchor, multiplier: 3.0 / 4.0),
+
+            // Capture button: bottom center
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.widthAnchor.constraint(equalToConstant: 70),
@@ -80,9 +95,9 @@ class ViewController: UIViewController {
 
     private func attachPreview() {
         let layer = cameraManager.makePreviewLayer()
-        layer.frame = view.bounds
+        layer.frame = previewContainer.bounds
         layer.videoGravity = .resizeAspectFill
-        view.layer.insertSublayer(layer, at: 0)
+        previewContainer.layer.addSublayer(layer)
         previewLayer = layer
     }
 
