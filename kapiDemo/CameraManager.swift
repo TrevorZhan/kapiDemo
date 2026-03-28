@@ -120,10 +120,15 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             return
         }
 
+        // Get orientation from photo metadata
+        let cgOrientation = photo.metadata[String(kCGImagePropertyOrientation)] as? UInt32
+        let orientation = cgOrientation.flatMap { CGImagePropertyOrientation(rawValue: $0) }
+            ?? .right // Default to .right for portrait photos
+
         // Process and save
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                let processedImage = try ImageProcessor.processImage(data: data, isRAW: isRAW)
+                let processedImage = try ImageProcessor.processImage(data: data, isRAW: isRAW, orientation: orientation)
                 PhotoSaver.save(image: processedImage) { result in
                     self?.captureCompletion?(result)
                     self?.captureCompletion = nil
