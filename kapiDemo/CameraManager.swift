@@ -97,6 +97,7 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         error: Error?
     ) {
         if let error = error {
+            print("DEBUG: Capture error: \(error)")
             captureCompletion?(.failure(error))
             captureCompletion = nil
             return
@@ -106,9 +107,20 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         let imageData: Data?
         let isRAW: Bool
 
-        if #available(iOS 14.3, *), photo.isRawPhoto {
-            imageData = photo.fileDataRepresentation()
-            isRAW = true
+        if #available(iOS 14.3, *) {
+            if photo.isRawPhoto {
+                print("DEBUG: Got RAW photo")
+                imageData = photo.fileDataRepresentation()
+                isRAW = true
+            } else if isProRAWSupported {
+                // This is the processed companion photo — skip it
+                print("DEBUG: Skipping processed companion photo")
+                return
+            } else {
+                print("DEBUG: Got JPEG/HEIC photo")
+                imageData = photo.fileDataRepresentation()
+                isRAW = false
+            }
         } else {
             imageData = photo.fileDataRepresentation()
             isRAW = false
@@ -134,6 +146,7 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
                     self?.captureCompletion = nil
                 }
             } catch {
+                print("DEBUG: Processing error: \(error)")
                 self?.captureCompletion?(.failure(error))
                 self?.captureCompletion = nil
             }
