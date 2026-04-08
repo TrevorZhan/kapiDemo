@@ -18,6 +18,9 @@ class ViewController: UIViewController {
     private var lensButtons: [Lens: UIButton] = [:]
     private let resolutionButton = UIButton(type: .system)
     private let filterToggleButton = UIButton(type: .system)
+    private let flashOverlay = UIView()
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+    private let notificationFeedback = UINotificationFeedbackGenerator()
     private var toastHideWorkItem: DispatchWorkItem?
 
     override func viewDidLoad() {
@@ -64,7 +67,16 @@ class ViewController: UIViewController {
         captureButton.layer.borderWidth = 3
         captureButton.layer.borderColor = UIColor.black.cgColor
         captureButton.addTarget(self, action: #selector(captureButtonTapped), for: .touchUpInside)
+        captureButton.addTarget(self, action: #selector(captureButtonTouchDown), for: .touchDown)
+        captureButton.addTarget(self, action: #selector(captureButtonTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
         view.addSubview(captureButton)
+
+        // White flash overlay on the preview
+        flashOverlay.translatesAutoresizingMaskIntoConstraints = false
+        flashOverlay.backgroundColor = .white
+        flashOverlay.alpha = 0
+        flashOverlay.isUserInteractionEnabled = false
+        previewContainer.addSubview(flashOverlay)
 
         // Lens selector stack — populated after camera configure
         lensStack.translatesAutoresizingMaskIntoConstraints = false
@@ -74,10 +86,10 @@ class ViewController: UIViewController {
         lensStack.spacing = 12
         view.addSubview(lensStack)
 
-        // Filter toggle (LUT on/off)
+        // Filter toggle (Preview on/off)
         filterToggleButton.translatesAutoresizingMaskIntoConstraints = false
         filterToggleButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-        filterToggleButton.setTitle("LUT ON", for: .normal)
+        filterToggleButton.setTitle("Preview", for: .normal)
         filterToggleButton.setTitleColor(.black, for: .normal)
         filterToggleButton.backgroundColor = UIColor.yellow.withAlphaComponent(0.9)
         filterToggleButton.layer.cornerRadius = 18
@@ -126,6 +138,12 @@ class ViewController: UIViewController {
             filteredPreview.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
             filteredPreview.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
 
+            // Flash overlay fills the preview
+            flashOverlay.topAnchor.constraint(equalTo: previewContainer.topAnchor),
+            flashOverlay.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            flashOverlay.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            flashOverlay.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+
             // Capture button: bottom center
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -142,9 +160,9 @@ class ViewController: UIViewController {
             resolutionButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
             resolutionButton.heightAnchor.constraint(equalToConstant: 36),
 
-            // Filter toggle: top-left of the preview
-            filterToggleButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
-            filterToggleButton.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor, constant: 12),
+            // Filter toggle: to the right of the status label
+            filterToggleButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            filterToggleButton.leadingAnchor.constraint(equalTo: statusLabel.trailingAnchor, constant: 12),
             filterToggleButton.heightAnchor.constraint(equalToConstant: 36),
 
             // Toast: floats above the lens selector
@@ -245,7 +263,6 @@ class ViewController: UIViewController {
     @objc private func filterToggleTapped() {
         filteredPreview.isFilterEnabled.toggle()
         let enabled = filteredPreview.isFilterEnabled
-        filterToggleButton.setTitle(enabled ? "LUT ON" : "LUT OFF", for: .normal)
         filterToggleButton.backgroundColor = enabled
             ? UIColor.yellow.withAlphaComponent(0.9)
             : UIColor.black.withAlphaComponent(0.5)
@@ -262,18 +279,65 @@ class ViewController: UIViewController {
 
     // MARK: - Capture
 
+    @objc private func captureButtonTouchDown() {
+        impactFeedback.prepare()
+        impactFeedback.impactOccurred()
+        UIView.animate(
+            withDuration: 0.15,
+            delay: 0,
+            usingSpringWithDamping: 0.5,
+            initialSpringVelocity: 0.5,
+            options: [.allowUserInteraction],
+            animations: { [weak self] in
+                self?.captureButton.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+            }
+        )
+    }
+
+    @objc private func captureButtonTouchUp() {
+        UIView.animate(
+            withDuration: 0.2,
+            delay: 0,
+            usingSpringWithDamping: 0.6,
+            initialSpringVelocity: 0.5,
+            options: [.allowUserInteraction],
+            animations: { [weak self] in
+                self?.captureButton.transform = .identity
+            }
+        )
+    }
+
     @objc private func captureButtonTapped() {
         captureButton.isEnabled = false
+        flashPreview()
+        notificationFeedback.prepare()
         cameraManager.capturePhoto { [weak self] result in
             DispatchQueue.main.async {
-                self?.captureButton.isEnabled = true
+                guard let self = self else { return }
+                self.captureButton.isEnabled = true
                 switch result {
                 case .success(let elapsed):
+                    self.notificationFeedback.notificationOccurred(.success)
                     let ms = Int((elapsed * 1000).rounded())
-                    self?.showToast("Saved in \(ms) ms")
+                    self.showToast("Saved in \(ms) ms")
                 case .failure(let error):
-                    self?.showAlert(title: "Error", message: error.localizedDescription)
+                    self.notificationFeedback.notificationOccurred(.error)
+                    self.showAlert(title: "Error", message: error.localizedDescription)
                 }
+            }
+        }
+    }
+
+    private func flashPreview() {
+        // Cancel any in-flight animation and snap to visible immediately
+        flashOverlay.layer.removeAllAnimations()
+        flashOverlay.alpha = 1
+
+        // Schedule the fade-out on a fixed delay so first-capture jank
+        // doesn't stretch the animation duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            UIView.animate(withDuration: 0.1) {
+                self?.flashOverlay.alpha = 0
             }
         }
     }
