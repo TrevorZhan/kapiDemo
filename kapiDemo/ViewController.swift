@@ -12,7 +12,12 @@ class ViewController: UIViewController {
     private let statusLabel = UILabel()
     private let captureButton = UIButton(type: .system)
     private let previewContainer = UIView()
+    private let toastLabel = UILabel()
+    private let lensStack = UIStackView()
+    private var lensButtons: [Lens: UIButton] = [:]
+    private let resolutionButton = UIButton(type: .system)
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var toastHideWorkItem: DispatchWorkItem?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -56,6 +61,36 @@ class ViewController: UIViewController {
         captureButton.addTarget(self, action: #selector(captureButtonTapped), for: .touchUpInside)
         view.addSubview(captureButton)
 
+        // Lens selector stack — populated after camera configure
+        lensStack.translatesAutoresizingMaskIntoConstraints = false
+        lensStack.axis = .horizontal
+        lensStack.alignment = .center
+        lensStack.distribution = .equalSpacing
+        lensStack.spacing = 12
+        view.addSubview(lensStack)
+
+        // Resolution toggle (12MP / 48MP)
+        resolutionButton.translatesAutoresizingMaskIntoConstraints = false
+        resolutionButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        resolutionButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        resolutionButton.setTitleColor(.white, for: .normal)
+        resolutionButton.layer.cornerRadius = 18
+        resolutionButton.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        resolutionButton.addTarget(self, action: #selector(resolutionButtonTapped), for: .touchUpInside)
+        resolutionButton.isHidden = true
+        view.addSubview(resolutionButton)
+
+        // Toast label — floating overlay for capture timing
+        toastLabel.translatesAutoresizingMaskIntoConstraints = false
+        toastLabel.textColor = .white
+        toastLabel.textAlignment = .center
+        toastLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        toastLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        toastLabel.layer.cornerRadius = 10
+        toastLabel.clipsToBounds = true
+        toastLabel.alpha = 0
+        view.addSubview(toastLabel)
+
         NSLayoutConstraint.activate([
             // Status label: top of safe area
             statusLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
@@ -74,6 +109,22 @@ class ViewController: UIViewController {
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.widthAnchor.constraint(equalToConstant: 70),
             captureButton.heightAnchor.constraint(equalToConstant: 70),
+
+            // Lens selector: between preview and capture button
+            lensStack.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -16),
+            lensStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            lensStack.heightAnchor.constraint(equalToConstant: 40),
+
+            // Resolution toggle: top-right of the preview
+            resolutionButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
+            resolutionButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
+            resolutionButton.heightAnchor.constraint(equalToConstant: 36),
+
+            // Toast: floats above the lens selector
+            toastLabel.bottomAnchor.constraint(equalTo: lensStack.topAnchor, constant: -12),
+            toastLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            toastLabel.heightAnchor.constraint(equalToConstant: 36),
+            toastLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
         ])
     }
 
@@ -86,11 +137,80 @@ class ViewController: UIViewController {
                 if success {
                     self.attachPreview()
                     self.updateLabel()
+                    self.buildLensButtons()
+                    self.updateResolutionButton()
                 } else {
                     self.statusLabel.text = "Camera unavailable"
                 }
             }
         }
+    }
+
+    // MARK: - Lens Buttons
+
+    private func buildLensButtons() {
+        lensStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        lensButtons.removeAll()
+
+        for lens in cameraManager.availableLenses {
+            let button = UIButton(type: .system)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.setTitle(lens.label, for: .normal)
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+            button.setTitleColor(.white, for: .normal)
+            button.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+            button.layer.cornerRadius = 18
+            button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+            button.addTarget(self, action: #selector(lensButtonTapped(_:)), for: .touchUpInside)
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 36).isActive = true
+            lensStack.addArrangedSubview(button)
+            lensButtons[lens] = button
+        }
+
+        updateLensButtonStates()
+    }
+
+    private func updateLensButtonStates() {
+        for (lens, button) in lensButtons {
+            let isActive = lens == cameraManager.currentLens
+            button.backgroundColor = isActive
+                ? UIColor.yellow.withAlphaComponent(0.9)
+                : UIColor.black.withAlphaComponent(0.5)
+            button.setTitleColor(isActive ? .black : .white, for: .normal)
+        }
+    }
+
+    @objc private func lensButtonTapped(_ sender: UIButton) {
+        guard let lens = lensButtons.first(where: { $0.value === sender })?.key else { return }
+        lensButtons.values.forEach { $0.isEnabled = false }
+        cameraManager.switchLens(to: lens) { [weak self] success in
+            guard let self = self else { return }
+            self.lensButtons.values.forEach { $0.isEnabled = true }
+            if success {
+                self.updateLensButtonStates()
+                self.updateResolutionButton()
+            } else {
+                self.showToast("Lens switch failed")
+            }
+        }
+    }
+
+    // MARK: - Resolution Toggle
+
+    private func updateResolutionButton() {
+        resolutionButton.isHidden = !cameraManager.is48MPSupported
+        let title = cameraManager.is48MPEnabled ? "48MP" : "12MP"
+        resolutionButton.setTitle(title, for: .normal)
+        resolutionButton.backgroundColor = cameraManager.is48MPEnabled
+            ? UIColor.yellow.withAlphaComponent(0.9)
+            : UIColor.black.withAlphaComponent(0.5)
+        resolutionButton.setTitleColor(cameraManager.is48MPEnabled ? .black : .white, for: .normal)
+    }
+
+    @objc private func resolutionButtonTapped() {
+        cameraManager.is48MPEnabled.toggle()
+        updateResolutionButton()
     }
 
     private func attachPreview() {
@@ -117,13 +237,29 @@ class ViewController: UIViewController {
             DispatchQueue.main.async {
                 self?.captureButton.isEnabled = true
                 switch result {
-                case .success:
-                    self?.showAlert(title: "Saved", message: "Photo saved to library.")
+                case .success(let elapsed):
+                    let ms = Int((elapsed * 1000).rounded())
+                    self?.showToast("Saved in \(ms) ms")
                 case .failure(let error):
                     self?.showAlert(title: "Error", message: error.localizedDescription)
                 }
             }
         }
+    }
+
+    private func showToast(_ text: String) {
+        toastHideWorkItem?.cancel()
+        toastLabel.text = "  \(text)  "
+        UIView.animate(withDuration: 0.2) {
+            self.toastLabel.alpha = 1
+        }
+        let workItem = DispatchWorkItem { [weak self] in
+            UIView.animate(withDuration: 0.3) {
+                self?.toastLabel.alpha = 0
+            }
+        }
+        toastHideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: workItem)
     }
 
     private func showAlert(title: String, message: String) {

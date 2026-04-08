@@ -6,13 +6,45 @@
 import AVFoundation
 import UIKit
 
+enum Lens: CaseIterable {
+    case ultraWide  // 0.5×
+    case wide       // 1×
+    case telephoto  // 2× / 3× / 5× depending on device
+
+    var deviceType: AVCaptureDevice.DeviceType {
+        switch self {
+        case .ultraWide: return .builtInUltraWideCamera
+        case .wide:      return .builtInWideAngleCamera
+        case .telephoto: return .builtInTelephotoCamera
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .ultraWide: return "0.5×"
+        case .wide:      return "1×"
+        case .telephoto: return "3×"
+        }
+    }
+}
+
 class CameraManager: NSObject {
 
     private let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private(set) var isProRAWSupported = false
 
-    private var captureCompletion: ((Result<Void, Error>) -> Void)?
+    private var currentInput: AVCaptureDeviceInput?
+    private(set) var availableLenses: [Lens] = []
+    private(set) var currentLens: Lens = .wide
+
+    // 48MP state
+    private(set) var is48MPSupported = false
+    var is48MPEnabled = false
+    private let dims48MP = CMVideoDimensions(width: 8064, height: 6048)
+
+    private var captureCompletion: ((Result<TimeInterval, Error>) -> Void)?
+    private var captureStartTime: CFAbsoluteTime = 0
 
     // MARK: - Configure
 
@@ -23,7 +55,12 @@ class CameraManager: NSObject {
             self.session.beginConfiguration()
             self.session.sessionPreset = .photo // AVCaptureSessionPresetPhoto
 
-            // Add back camera input
+            // Discover available physical back lenses
+            self.availableLenses = Lens.allCases.filter { lens in
+                AVCaptureDevice.default(lens.deviceType, for: .video, position: .back) != nil
+            }
+
+            // Add default wide camera input
             guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
                   let input = try? AVCaptureDeviceInput(device: camera),
                   self.session.canAddInput(input) else {
@@ -32,6 +69,8 @@ class CameraManager: NSObject {
                 return
             }
             self.session.addInput(input)
+            self.currentInput = input
+            self.currentLens = .wide
 
             // Add photo output
             guard self.session.canAddOutput(self.photoOutput) else {
@@ -49,6 +88,9 @@ class CameraManager: NSObject {
                 }
             }
 
+            // Detect and unlock 48MP support on the wide lens
+            self.updateMaxPhotoDimensionsForCurrentDevice(device: camera)
+
             self.session.commitConfiguration()
             self.session.startRunning()
             completion(true)
@@ -61,10 +103,93 @@ class CameraManager: NSObject {
         return AVCaptureVideoPreviewLayer(session: session)
     }
 
+    // MARK: - 48MP Support
+
+    private func updateMaxPhotoDimensionsForCurrentDevice(device: AVCaptureDevice) {
+        if #available(iOS 16.0, *) {
+            // 48MP is only available on the wide lens of Pro models
+            let supports48 = device.activeFormat.supportedMaxPhotoDimensions.contains { dims in
+                dims.width >= dims48MP.width && dims.height >= dims48MP.height
+            }
+            is48MPSupported = supports48 && currentLens == .wide
+
+            if supports48 {
+                // Unlock the max dimensions on the output so settings can request it
+                photoOutput.maxPhotoDimensions = dims48MP
+            } else {
+                // Reset to default (12MP) when lens doesn't support 48MP
+                if let defaultDims = device.activeFormat.supportedMaxPhotoDimensions.first {
+                    photoOutput.maxPhotoDimensions = defaultDims
+                }
+            }
+        } else {
+            is48MPSupported = false
+        }
+
+        // Disable 48MP if the current lens no longer supports it
+        if !is48MPSupported {
+            is48MPEnabled = false
+        }
+    }
+
+    // MARK: - Lens Switching
+
+    func switchLens(to lens: Lens, completion: ((Bool) -> Void)? = nil) {
+        guard lens != currentLens else {
+            completion?(true)
+            return
+        }
+        guard availableLenses.contains(lens) else {
+            completion?(false)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            guard let newDevice = AVCaptureDevice.default(lens.deviceType, for: .video, position: .back),
+                  let newInput = try? AVCaptureDeviceInput(device: newDevice) else {
+                DispatchQueue.main.async { completion?(false) }
+                return
+            }
+
+            self.session.beginConfiguration()
+
+            if let existing = self.currentInput {
+                self.session.removeInput(existing)
+            }
+
+            guard self.session.canAddInput(newInput) else {
+                // Rollback
+                if let existing = self.currentInput {
+                    self.session.addInput(existing)
+                }
+                self.session.commitConfiguration()
+                DispatchQueue.main.async { completion?(false) }
+                return
+            }
+            self.session.addInput(newInput)
+            self.currentInput = newInput
+            self.currentLens = lens
+
+            // Re-apply ProRAW setting — the photoOutput can lose it on some reconfigurations
+            if #available(iOS 14.3, *), self.photoOutput.isAppleProRAWSupported {
+                self.photoOutput.isAppleProRAWEnabled = true
+            }
+
+            // Re-evaluate 48MP support for the new lens
+            self.updateMaxPhotoDimensionsForCurrentDevice(device: newDevice)
+
+            self.session.commitConfiguration()
+            DispatchQueue.main.async { completion?(true) }
+        }
+    }
+
     // MARK: - Capture
 
-    func capturePhoto(completion: @escaping (Result<Void, Error>) -> Void) {
+    func capturePhoto(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
         self.captureCompletion = completion
+        self.captureStartTime = CFAbsoluteTimeGetCurrent()
 
         let settings: AVCapturePhotoSettings
 
@@ -83,6 +208,12 @@ class CameraManager: NSObject {
         }
 
         settings.flashMode = .auto
+
+        // Request 48MP if enabled and supported
+        if #available(iOS 16.0, *), is48MPEnabled && is48MPSupported {
+            settings.maxPhotoDimensions = dims48MP
+        }
+
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 }
@@ -130,15 +261,23 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
 
         // Process and save
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
             do {
                 let processedImage = try ImageProcessor.processImage(data: data, isRAW: isRAW)
-                PhotoSaver.save(image: processedImage) { result in
-                    self?.captureCompletion?(result)
-                    self?.captureCompletion = nil
+                PhotoSaver.save(image: processedImage) { [weak self] result in
+                    guard let self = self else { return }
+                    switch result {
+                    case .success:
+                        let elapsed = CFAbsoluteTimeGetCurrent() - self.captureStartTime
+                        self.captureCompletion?(.success(elapsed))
+                    case .failure(let error):
+                        self.captureCompletion?(.failure(error))
+                    }
+                    self.captureCompletion = nil
                 }
             } catch {
-                self?.captureCompletion?(.failure(error))
-                self?.captureCompletion = nil
+                self.captureCompletion?(.failure(error))
+                self.captureCompletion = nil
             }
         }
     }
