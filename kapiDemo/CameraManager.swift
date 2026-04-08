@@ -4,6 +4,7 @@
 //
 
 import AVFoundation
+import CoreImage
 import UIKit
 
 enum Lens: CaseIterable {
@@ -32,7 +33,12 @@ class CameraManager: NSObject {
 
     private let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
+    private let videoDataOutput = AVCaptureVideoDataOutput()
+    private let videoDataQueue = DispatchQueue(label: "camera.videodata.queue", qos: .userInitiated)
     private(set) var isProRAWSupported = false
+
+    /// Optional live preview view that receives filtered CIImage frames.
+    weak var filteredPreview: FilteredPreviewView?
 
     private var currentInput: AVCaptureDeviceInput?
     private(set) var availableLenses: [Lens] = []
@@ -80,6 +86,17 @@ class CameraManager: NSObject {
             }
             self.session.addOutput(self.photoOutput)
 
+            // Add video data output for filtered live preview
+            self.videoDataOutput.videoSettings = [
+                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+            ]
+            self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
+            self.videoDataOutput.setSampleBufferDelegate(self, queue: self.videoDataQueue)
+            if self.session.canAddOutput(self.videoDataOutput) {
+                self.session.addOutput(self.videoDataOutput)
+            }
+            self.applyPortraitRotationToVideoDataOutput()
+
             // Enable ProRAW if supported
             if #available(iOS 14.3, *) {
                 if self.photoOutput.isAppleProRAWSupported {
@@ -97,10 +114,17 @@ class CameraManager: NSObject {
         }
     }
 
-    // MARK: - Preview
+    // MARK: - Video Data Output Rotation
 
-    func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
-        return AVCaptureVideoPreviewLayer(session: session)
+    private func applyPortraitRotationToVideoDataOutput() {
+        guard let connection = videoDataOutput.connection(with: .video) else { return }
+        if #available(iOS 17.0, *) {
+            if connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90
+            }
+        } else if connection.isVideoOrientationSupported {
+            connection.videoOrientation = .portrait
+        }
     }
 
     // MARK: - 48MP Support
@@ -179,6 +203,9 @@ class CameraManager: NSObject {
 
             // Re-evaluate 48MP support for the new lens
             self.updateMaxPhotoDimensionsForCurrentDevice(device: newDevice)
+
+            // Re-apply portrait rotation — swapping the input creates a new connection
+            self.applyPortraitRotationToVideoDataOutput()
 
             self.session.commitConfiguration()
             DispatchQueue.main.async { completion?(true) }
@@ -280,6 +307,21 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
                 self.captureCompletion = nil
             }
         }
+    }
+}
+
+// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        filteredPreview?.enqueue(ciImage)
     }
 }
 

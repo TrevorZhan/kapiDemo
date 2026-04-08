@@ -18,6 +18,7 @@
 		AA0000062F76C200008EAD28 /* ImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000052F76C200008EAD28 /* ImageProcessor.swift */; };
 		AA0000082F76C200008EAD28 /* PhotoSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000072F76C200008EAD28 /* PhotoSaver.swift */; };
 		AA00000A2F76C200008EAD28 /* 典雅绿调.cube in Resources */ = {isa = PBXBuildFile; fileRef = AA0000092F76C200008EAD28 /* 典雅绿调.cube */; };
+		AA00000D2F76C200008EAD28 /* FilteredPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,6 +54,7 @@
 		AA0000072F76C200008EAD28 /* PhotoSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSaver.swift; sourceTree = "<group>"; };
 		AA0000092F76C200008EAD28 /* 典雅绿调.cube */ = {isa = PBXFileReference; lastKnownFileType = text; path = "典雅绿调.cube"; sourceTree = "<group>"; };
 		AA00000B2F76C200008EAD28 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilteredPreviewView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,6 +109,7 @@
 				3657294D2F76C113008EAD28 /* kapiDemoApp.swift */,
 				AA0000012F76C200008EAD28 /* ViewController.swift */,
 				AA0000032F76C200008EAD28 /* CameraManager.swift */,
+				AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */,
 				AA0000052F76C200008EAD28 /* ImageProcessor.swift */,
 				AA0000072F76C200008EAD28 /* PhotoSaver.swift */,
 				AA0000092F76C200008EAD28 /* 典雅绿调.cube */,
@@ -275,6 +278,7 @@
 				3657294E2F76C113008EAD28 /* kapiDemoApp.swift in Sources */,
 				AA0000022F76C200008EAD28 /* ViewController.swift in Sources */,
 				AA0000042F76C200008EAD28 /* CameraManager.swift in Sources */,
+				AA00000D2F76C200008EAD28 /* FilteredPreviewView.swift in Sources */,
 				AA0000062F76C200008EAD28 /* ImageProcessor.swift in Sources */,
 				AA0000082F76C200008EAD28 /* PhotoSaver.swift in Sources */,
 			);

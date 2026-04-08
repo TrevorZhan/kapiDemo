@@ -8,6 +8,30 @@ import UIKit
 
 enum ImageProcessor {
 
+    // MARK: - Cached LUT data (parsed once)
+
+    private static var cachedLUT: (dimension: Int, data: Data)?
+
+    static func lutParameters() throws -> (dimension: Int, data: Data) {
+        if let cached = cachedLUT { return cached }
+        let parsed = try loadCubeFile()
+        cachedLUT = parsed
+        return parsed
+    }
+
+    /// Applies the cached LUT to a CIImage. Safe to call per frame.
+    static func applyCachedLUT(to image: CIImage) -> CIImage? {
+        guard let params = try? lutParameters(),
+              let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+            return nil
+        }
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(params.dimension, forKey: "inputCubeDimension")
+        filter.setValue(params.data, forKey: "inputCubeData")
+        filter.setValue(CGColorSpaceCreateDeviceRGB(), forKey: "inputColorSpace")
+        return filter.outputImage
+    }
+
     // MARK: - Process captured image data
 
     static func processImage(data: Data, isRAW: Bool) throws -> UIImage {
@@ -64,7 +88,7 @@ enum ImageProcessor {
     // MARK: - Load and apply LUT from 典雅绿调.cube
 
     private static func applyLUT(to image: CIImage) throws -> CIImage {
-        let (dimension, cubeData) = try loadCubeFile()
+        let (dimension, cubeData) = try lutParameters()
 
         guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
             throw ProcessorError.filterCreationFailed

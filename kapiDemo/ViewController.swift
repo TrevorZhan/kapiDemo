@@ -12,11 +12,12 @@ class ViewController: UIViewController {
     private let statusLabel = UILabel()
     private let captureButton = UIButton(type: .system)
     private let previewContainer = UIView()
+    private let filteredPreview = FilteredPreviewView(frame: .zero, device: nil)
     private let toastLabel = UILabel()
     private let lensStack = UIStackView()
     private var lensButtons: [Lens: UIButton] = [:]
     private let resolutionButton = UIButton(type: .system)
-    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private let filterToggleButton = UIButton(type: .system)
     private var toastHideWorkItem: DispatchWorkItem?
 
     override func viewDidLoad() {
@@ -28,7 +29,7 @@ class ViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        previewLayer?.frame = previewContainer.bounds
+        filteredPreview.frame = previewContainer.bounds
     }
 
     // MARK: - UI Setup
@@ -40,6 +41,10 @@ class ViewController: UIViewController {
         previewContainer.layer.cornerRadius = 12
         previewContainer.clipsToBounds = true
         view.addSubview(previewContainer)
+
+        // Filtered live preview fills the container
+        filteredPreview.translatesAutoresizingMaskIntoConstraints = false
+        previewContainer.addSubview(filteredPreview)
 
         // Status label
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -68,6 +73,17 @@ class ViewController: UIViewController {
         lensStack.distribution = .equalSpacing
         lensStack.spacing = 12
         view.addSubview(lensStack)
+
+        // Filter toggle (LUT on/off)
+        filterToggleButton.translatesAutoresizingMaskIntoConstraints = false
+        filterToggleButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        filterToggleButton.setTitle("LUT ON", for: .normal)
+        filterToggleButton.setTitleColor(.black, for: .normal)
+        filterToggleButton.backgroundColor = UIColor.yellow.withAlphaComponent(0.9)
+        filterToggleButton.layer.cornerRadius = 18
+        filterToggleButton.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        filterToggleButton.addTarget(self, action: #selector(filterToggleTapped), for: .touchUpInside)
+        view.addSubview(filterToggleButton)
 
         // Resolution toggle (12MP / 48MP)
         resolutionButton.translatesAutoresizingMaskIntoConstraints = false
@@ -104,6 +120,12 @@ class ViewController: UIViewController {
             previewContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             previewContainer.widthAnchor.constraint(equalTo: previewContainer.heightAnchor, multiplier: 3.0 / 4.0),
 
+            // Filtered preview fills its container
+            filteredPreview.topAnchor.constraint(equalTo: previewContainer.topAnchor),
+            filteredPreview.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            filteredPreview.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            filteredPreview.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+
             // Capture button: bottom center
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -120,6 +142,11 @@ class ViewController: UIViewController {
             resolutionButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
             resolutionButton.heightAnchor.constraint(equalToConstant: 36),
 
+            // Filter toggle: top-left of the preview
+            filterToggleButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
+            filterToggleButton.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor, constant: 12),
+            filterToggleButton.heightAnchor.constraint(equalToConstant: 36),
+
             // Toast: floats above the lens selector
             toastLabel.bottomAnchor.constraint(equalTo: lensStack.topAnchor, constant: -12),
             toastLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -131,11 +158,11 @@ class ViewController: UIViewController {
     // MARK: - Camera Setup
 
     private func setupCamera() {
+        cameraManager.filteredPreview = filteredPreview
         cameraManager.configure { [weak self] success in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 if success {
-                    self.attachPreview()
                     self.updateLabel()
                     self.buildLensButtons()
                     self.updateResolutionButton()
@@ -213,12 +240,16 @@ class ViewController: UIViewController {
         updateResolutionButton()
     }
 
-    private func attachPreview() {
-        let layer = cameraManager.makePreviewLayer()
-        layer.frame = previewContainer.bounds
-        layer.videoGravity = .resizeAspectFill
-        previewContainer.layer.addSublayer(layer)
-        previewLayer = layer
+    // MARK: - Filter Toggle
+
+    @objc private func filterToggleTapped() {
+        filteredPreview.isFilterEnabled.toggle()
+        let enabled = filteredPreview.isFilterEnabled
+        filterToggleButton.setTitle(enabled ? "LUT ON" : "LUT OFF", for: .normal)
+        filterToggleButton.backgroundColor = enabled
+            ? UIColor.yellow.withAlphaComponent(0.9)
+            : UIColor.black.withAlphaComponent(0.5)
+        filterToggleButton.setTitleColor(enabled ? .black : .white, for: .normal)
     }
 
     private func updateLabel() {
