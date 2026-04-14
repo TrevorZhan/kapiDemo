@@ -195,20 +195,20 @@ class ViewController: UIViewController {
             lensStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             lensStack.heightAnchor.constraint(equalToConstant: 40),
 
-            // Live Photo toggle: top-left of the preview
-            livePhotoButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
-            livePhotoButton.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor, constant: 12),
+            // Filter toggle: left side, same row as status label
+            filterToggleButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            filterToggleButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            filterToggleButton.heightAnchor.constraint(equalToConstant: 36),
+
+            // Live Photo toggle: right side, same row as status label
+            livePhotoButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            livePhotoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             livePhotoButton.heightAnchor.constraint(equalToConstant: 36),
 
             // Resolution toggle: top-right of the preview
             resolutionButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
             resolutionButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
             resolutionButton.heightAnchor.constraint(equalToConstant: 36),
-
-            // Filter toggle: to the right of the status label
-            filterToggleButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
-            filterToggleButton.leadingAnchor.constraint(equalTo: statusLabel.trailingAnchor, constant: 12),
-            filterToggleButton.heightAnchor.constraint(equalToConstant: 36),
 
             // Toast: floats above the lens selector
             toastLabel.bottomAnchor.constraint(equalTo: lensStack.topAnchor, constant: -12),
