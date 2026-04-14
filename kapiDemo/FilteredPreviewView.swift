@@ -19,6 +19,14 @@ final class FilteredPreviewView: MTKView {
     private let colorSpace = CGColorSpaceCreateDeviceRGB()
     private var latestImage: CIImage?
 
+    /// Dedicated LUT filter for the preview thread — avoids sharing with capture pipeline.
+    private var previewFilter: CIFilter?
+
+    /// Cached aspect-fill transform to avoid recomputing every frame.
+    private var cachedTransform: CGAffineTransform?
+    private var cachedImageSize: CGSize = .zero
+    private var cachedDrawableSize: CGSize = .zero
+
     override init(frame frameRect: CGRect, device: MTLDevice?) {
         let mtlDevice = device ?? MTLCreateSystemDefaultDevice()
         super.init(frame: frameRect, device: mtlDevice)
@@ -36,16 +44,21 @@ final class FilteredPreviewView: MTKView {
     private func commonInit() {
         guard let device = self.device else { return }
         self.commandQueue = device.makeCommandQueue()
-        self.ciContext = CIContext(mtlDevice: device)
+        self.ciContext = CIContext(mtlDevice: device, options: [
+            .cacheIntermediates: false
+        ])
 
         framebufferOnly = false
         colorPixelFormat = .bgra8Unorm
         // Use the built-in draw loop driven by display refresh
         isPaused = false
         enableSetNeedsDisplay = false
-        preferredFramesPerSecond = 30
+        preferredFramesPerSecond = 60
         contentMode = .scaleAspectFill
         backgroundColor = .black
+
+        // Build dedicated LUT filter for preview
+        previewFilter = ImageProcessor.createLUTFilter()
     }
 
     /// Called from the camera data output delegate on a background queue.
@@ -63,14 +76,16 @@ final class FilteredPreviewView: MTKView {
         }
 
         let filtered: CIImage
-        if isFilterEnabled, let styled = ImageProcessor.applyCachedLUT(to: source) {
-            filtered = styled
+        if isFilterEnabled, let filter = previewFilter {
+            filter.setValue(source, forKey: kCIInputImageKey)
+            filtered = filter.outputImage ?? source
         } else {
             filtered = source
         }
 
         let drawableSize = drawable.layer.drawableSize
-        let scaled = aspectFill(filtered, into: drawableSize)
+        let transform = aspectFillTransform(for: filtered.extent.size, into: drawableSize)
+        let scaled = filtered.transformed(by: transform)
 
         ciContext.render(
             scaled,
@@ -84,27 +99,30 @@ final class FilteredPreviewView: MTKView {
         commandBuffer.commit()
     }
 
-    /// Scales and translates a CIImage so it aspect-fills the given drawable size.
-    private func aspectFill(_ image: CIImage, into size: CGSize) -> CIImage {
-        let imageSize = image.extent.size
-        guard imageSize.width > 0, imageSize.height > 0 else { return image }
+    /// Returns a cached affine transform that aspect-fills the image into the drawable size.
+    private func aspectFillTransform(for imageSize: CGSize, into drawableSize: CGSize) -> CGAffineTransform {
+        if imageSize == cachedImageSize && drawableSize == cachedDrawableSize,
+           let cached = cachedTransform {
+            return cached
+        }
 
-        let scaleX = size.width / imageSize.width
-        let scaleY = size.height / imageSize.height
+        guard imageSize.width > 0, imageSize.height > 0 else { return .identity }
+
+        let scaleX = drawableSize.width / imageSize.width
+        let scaleY = drawableSize.height / imageSize.height
         let scale = max(scaleX, scaleY)
 
-        var transformed = image.transformed(
-            by: CGAffineTransform(scaleX: scale, y: scale)
-        )
+        let scaledW = imageSize.width * scale
+        let scaledH = imageSize.height * scale
+        let dx = (scaledW - drawableSize.width) / 2
+        let dy = (scaledH - drawableSize.height) / 2
 
-        // Center crop
-        let scaledExtent = transformed.extent
-        let dx = (scaledExtent.width - size.width) / 2
-        let dy = (scaledExtent.height - size.height) / 2
-        transformed = transformed.transformed(
-            by: CGAffineTransform(translationX: -scaledExtent.origin.x - dx,
-                                  y: -scaledExtent.origin.y - dy)
-        )
-        return transformed
+        let transform = CGAffineTransform(scaleX: scale, y: scale)
+            .translatedBy(x: -dx / scale, y: -dy / scale)
+
+        cachedTransform = transform
+        cachedImageSize = imageSize
+        cachedDrawableSize = drawableSize
+        return transform
     }
 }

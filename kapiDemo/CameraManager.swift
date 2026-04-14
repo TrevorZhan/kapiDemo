@@ -108,9 +108,9 @@ class CameraManager: NSObject {
             }
             self.session.addOutput(self.photoOutput)
 
-            // Add video data output for filtered live preview
+            // Add video data output for filtered live preview (native YUV avoids CPU conversion)
             self.videoDataOutput.videoSettings = [
-                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
             ]
             self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
             self.videoDataOutput.setSampleBufferDelegate(self, queue: self.videoDataQueue)

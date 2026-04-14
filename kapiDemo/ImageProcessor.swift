@@ -26,11 +26,24 @@ enum ImageProcessor {
         return filter
     }
 
-    /// Applies the cached LUT to a CIImage. Safe to call per frame.
+    /// Applies the cached LUT to a CIImage. Used by the capture pipeline.
     static func applyCachedLUT(to image: CIImage) -> CIImage? {
         guard let filter = cachedLUTFilter() else { return nil }
         filter.setValue(image, forKey: kCIInputImageKey)
         return filter.outputImage
+    }
+
+    /// Creates a new independent LUT filter instance. Use this for threads that
+    /// need their own filter (e.g. the real-time preview) to avoid contention.
+    static func createLUTFilter() -> CIFilter? {
+        guard let params = try? loadCubeFile(),
+              let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+            return nil
+        }
+        filter.setValue(params.0, forKey: "inputCubeDimension")
+        filter.setValue(params.1, forKey: "inputCubeData")
+        filter.setValue(CGColorSpaceCreateDeviceRGB(), forKey: "inputColorSpace")
+        return filter
     }
 
     // MARK: - Process captured image data
