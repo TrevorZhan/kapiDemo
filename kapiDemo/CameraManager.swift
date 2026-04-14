@@ -46,11 +46,23 @@ class CameraManager: NSObject {
     /// Optional live preview view that receives filtered CIImage frames.
     weak var filteredPreview: FilteredPreviewView?
 
-    // Live Photo state — holds results from the two async delegate callbacks
-    private var pendingLivePhotoRawData: Data?
-    private var pendingLivePhotoIsRAW: Bool = false
-    private var pendingLivePhotoMetadata: [String: Any]?
-    private var pendingLivePhotoMovieURL: URL?
+    // Per-capture state for concurrent captures
+    private class CaptureContext {
+        let completion: (Result<TimeInterval, Error>) -> Void
+        let startTime: CFAbsoluteTime
+        var livePhotoRawData: Data?
+        var livePhotoIsRAW: Bool = false
+        var livePhotoMetadata: [String: Any]?
+        var livePhotoMovieURL: URL?
+
+        init(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
+            self.completion = completion
+            self.startTime = CFAbsoluteTimeGetCurrent()
+        }
+    }
+
+    /// Active captures keyed by AVCapturePhotoSettings.uniqueID
+    private var activeCaptures: [Int64: CaptureContext] = [:]
     private var audioInput: AVCaptureDeviceInput?
 
     private var currentInput: AVCaptureDeviceInput?
@@ -61,9 +73,6 @@ class CameraManager: NSObject {
     private(set) var is48MPSupported = false
     var is48MPEnabled = false
     private let dims48MP = CMVideoDimensions(width: 8064, height: 6048)
-
-    private var captureCompletion: ((Result<TimeInterval, Error>) -> Void)?
-    private var captureStartTime: CFAbsoluteTime = 0
 
     // MARK: - Configure
 
@@ -255,13 +264,6 @@ class CameraManager: NSObject {
     // MARK: - Capture
 
     func capturePhoto(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
-        self.captureCompletion = completion
-        self.captureStartTime = CFAbsoluteTimeGetCurrent()
-        self.pendingLivePhotoRawData = nil
-        self.pendingLivePhotoIsRAW = false
-        self.pendingLivePhotoMetadata = nil
-        self.pendingLivePhotoMovieURL = nil
-
         let settings: AVCapturePhotoSettings
         let captureAsProRAW = useProRAW && isProRAWSupported && !isLivePhotoMode
 
@@ -293,6 +295,10 @@ class CameraManager: NSObject {
             settings.livePhotoVideoCodecType = .hevc
         }
 
+        // Register per-capture state keyed by the unique settings ID
+        let context = CaptureContext(completion: completion)
+        activeCaptures[settings.uniqueID] = context
+
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 }
@@ -306,9 +312,12 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: Error?
     ) {
+        let captureID = photo.resolvedSettings.uniqueID
+        guard let context = activeCaptures[captureID] else { return }
+
         if let error = error {
-            captureCompletion?(.failure(error))
-            captureCompletion = nil
+            activeCaptures.removeValue(forKey: captureID)
+            context.completion(.failure(error))
             return
         }
 
@@ -333,8 +342,8 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         }
 
         guard let data = imageData else {
-            captureCompletion?(.failure(CameraError.noImageData))
-            captureCompletion = nil
+            activeCaptures.removeValue(forKey: captureID)
+            context.completion(.failure(CameraError.noImageData))
             return
         }
 
@@ -345,10 +354,10 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // Live Photo: store the raw data and wait for the video callback.
             // We defer image processing until the video arrives so we can
             // embed the matching content identifier into the JPEG.
-            pendingLivePhotoRawData = data
-            pendingLivePhotoIsRAW = isRAW
-            pendingLivePhotoMetadata = metadata
-            finalizeLivePhotoIfReady()
+            context.livePhotoRawData = data
+            context.livePhotoIsRAW = isRAW
+            context.livePhotoMetadata = metadata
+            finalizeLivePhotoIfReady(captureID: captureID)
         } else {
             // Standard photo: process and save immediately
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -356,11 +365,10 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
                 do {
                     let processedData = try ImageProcessor.processImage(data: data, isRAW: isRAW, metadata: metadata)
                     PhotoSaver.save(imageData: processedData) { [weak self] result in
-                        self?.completeCapture(result: result)
+                        self?.completeCapture(captureID: captureID, result: result)
                     }
                 } catch {
-                    self.captureCompletion?(.failure(error))
-                    self.captureCompletion = nil
+                    self.completeCapture(captureID: captureID, result: .failure(error))
                 }
             }
         }
@@ -376,10 +384,15 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         resolvedSettings: AVCaptureResolvedPhotoSettings,
         error: Error?
     ) {
-        if let error = error {
-            captureCompletion?(.failure(error))
-            captureCompletion = nil
+        let captureID = resolvedSettings.uniqueID
+        guard let context = activeCaptures[captureID] else {
             cleanupTempFile(at: outputFileURL)
+            return
+        }
+
+        if let error = error {
+            cleanupTempFile(at: outputFileURL)
+            completeCapture(captureID: captureID, result: .failure(error))
             return
         }
 
@@ -390,37 +403,33 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             self.cleanupTempFile(at: outputFileURL)
 
             if let processedURL = processedURL {
-                self.pendingLivePhotoMovieURL = processedURL
+                context.livePhotoMovieURL = processedURL
             } else {
-                // If video processing failed, fall back to unprocessed — but it's already deleted.
-                // Signal failure.
-                self.captureCompletion?(.failure(CameraError.livePhotoVideoProcessingFailed))
-                self.captureCompletion = nil
+                self.completeCapture(captureID: captureID, result: .failure(CameraError.livePhotoVideoProcessingFailed))
                 return
             }
-            self.finalizeLivePhotoIfReady()
+            self.finalizeLivePhotoIfReady(captureID: captureID)
         }
     }
 
     /// Called after each Live Photo piece (still + video) arrives. Saves when both are ready.
-    private func finalizeLivePhotoIfReady() {
-        guard let rawData = pendingLivePhotoRawData,
-              let metadata = pendingLivePhotoMetadata,
-              let movieURL = pendingLivePhotoMovieURL else {
+    private func finalizeLivePhotoIfReady(captureID: Int64) {
+        guard let context = activeCaptures[captureID],
+              let rawData = context.livePhotoRawData,
+              let metadata = context.livePhotoMetadata,
+              let movieURL = context.livePhotoMovieURL else {
             return // waiting for the other piece
         }
 
-        let isRAW = pendingLivePhotoIsRAW
+        let isRAW = context.livePhotoIsRAW
 
         Task { [weak self] in
             let contentID = await VideoProcessor.readContentIdentifier(from: movieURL)
             guard let self = self else { return }
 
-
             // Embed the content identifier into the JPEG metadata so it matches the video
             var enrichedMetadata = metadata
             if let contentID = contentID {
-                // The content identifier lives in the MakerApple dictionary, key 17
                 var makerApple = enrichedMetadata[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any] ?? [:]
                 makerApple["17"] = contentID
                 enrichedMetadata[kCGImagePropertyMakerAppleDictionary as String] = makerApple
@@ -432,25 +441,24 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
                 )
                 PhotoSaver.saveLivePhoto(imageData: processedData, movieURL: movieURL) { [weak self] result in
                     self?.cleanupTempFile(at: movieURL)
-                    self?.completeCapture(result: result)
+                    self?.completeCapture(captureID: captureID, result: result)
                 }
             } catch {
                 self.cleanupTempFile(at: movieURL)
-                self.captureCompletion?(.failure(error))
-                self.captureCompletion = nil
+                self.completeCapture(captureID: captureID, result: .failure(error))
             }
         }
     }
 
-    private func completeCapture(result: Result<Void, Error>) {
+    private func completeCapture(captureID: Int64, result: Result<Void, Error>) {
+        guard let context = activeCaptures.removeValue(forKey: captureID) else { return }
         switch result {
         case .success:
-            let elapsed = CFAbsoluteTimeGetCurrent() - captureStartTime
-            captureCompletion?(.success(elapsed))
+            let elapsed = CFAbsoluteTimeGetCurrent() - context.startTime
+            context.completion(.success(elapsed))
         case .failure(let error):
-            captureCompletion?(.failure(error))
+            context.completion(.failure(error))
         }
-        captureCompletion = nil
     }
 
     private func cleanupTempFile(at url: URL) {

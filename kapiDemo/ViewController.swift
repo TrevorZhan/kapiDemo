@@ -384,13 +384,11 @@ class ViewController: UIViewController {
     }
 
     @objc private func captureButtonTapped() {
-        captureButton.isEnabled = false
         flashPreview()
         notificationFeedback.prepare()
         cameraManager.capturePhoto { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.captureButton.isEnabled = true
                 switch result {
                 case .success(let elapsed):
                     self.notificationFeedback.notificationOccurred(.success)
