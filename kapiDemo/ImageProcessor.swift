@@ -8,61 +8,65 @@ import UIKit
 
 enum ImageProcessor {
 
-    // MARK: - Cached LUT data (parsed once)
+    // MARK: - Cached LUT filter (created once, reused per frame)
 
-    private static var cachedLUT: (dimension: Int, data: Data)?
+    private static var _cachedFilter: CIFilter?
 
-    static func lutParameters() throws -> (dimension: Int, data: Data) {
-        if let cached = cachedLUT { return cached }
-        let parsed = try loadCubeFile()
-        cachedLUT = parsed
-        return parsed
+    /// Returns a pre-configured LUT filter. Only the inputImage needs to be set per use.
+    static func cachedLUTFilter() -> CIFilter? {
+        if let filter = _cachedFilter { return filter }
+        guard let params = try? loadCubeFile(),
+              let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
+            return nil
+        }
+        filter.setValue(params.0, forKey: "inputCubeDimension")
+        filter.setValue(params.1, forKey: "inputCubeData")
+        filter.setValue(CGColorSpaceCreateDeviceRGB(), forKey: "inputColorSpace")
+        _cachedFilter = filter
+        return filter
     }
 
     /// Applies the cached LUT to a CIImage. Safe to call per frame.
     static func applyCachedLUT(to image: CIImage) -> CIImage? {
-        guard let params = try? lutParameters(),
-              let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
-            return nil
-        }
+        guard let filter = cachedLUTFilter() else { return nil }
         filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(params.dimension, forKey: "inputCubeDimension")
-        filter.setValue(params.data, forKey: "inputCubeData")
-        filter.setValue(CGColorSpaceCreateDeviceRGB(), forKey: "inputColorSpace")
         return filter.outputImage
     }
 
     // MARK: - Process captured image data
 
-    static func processImage(data: Data, isRAW: Bool) throws -> UIImage {
+    /// Processes the image and returns JPEG Data with original EXIF metadata preserved.
+    static func processImage(data: Data, isRAW: Bool, metadata: [String: Any]) throws -> Data {
         // 1. Decode
         let decoded: CIImage
         let imageOrientation: CGImagePropertyOrientation
 
         if isRAW {
             decoded = try decodeRAW(data: data)
-            // CIRAWFilter already rotates pixels to correct orientation
             imageOrientation = .up
         } else {
             guard let ciImage = CIImage(data: data) else {
                 throw ProcessorError.decodeFailed
             }
             decoded = ciImage
-            // CIImage(data:) does NOT rotate pixels — orientation is stored as metadata.
-            // Read it and pass to UIImage so it displays correctly.
             if let ciOriValue = decoded.properties[kCGImagePropertyOrientation as String] as? UInt32,
                let ciOri = CGImagePropertyOrientation(rawValue: ciOriValue) {
                 imageOrientation = ciOri
             } else {
-                imageOrientation = .right // Default for portrait photos
+                imageOrientation = .right
             }
         }
 
         // 2. Apply LUT
         let styled = try applyLUT(to: decoded)
 
-        // 3. Render final UIImage with correct orientation
-        return try renderImage(styled, orientation: imageOrientation)
+        // 3. Render to CGImage
+        guard let cgImage = renderContext.createCGImage(styled, from: styled.extent) else {
+            throw ProcessorError.renderFailed
+        }
+
+        // 4. Write JPEG with original EXIF metadata
+        return try renderJPEGData(cgImage: cgImage, metadata: metadata, orientation: imageOrientation)
     }
 
     // MARK: - Decode RAW using CIRAWFilter
@@ -85,24 +89,12 @@ enum ImageProcessor {
         }
     }
 
-    // MARK: - Load and apply LUT from 典雅绿调.cube
+    // MARK: - Apply LUT (reuses cached filter)
 
     private static func applyLUT(to image: CIImage) throws -> CIImage {
-        let (dimension, cubeData) = try lutParameters()
-
-        guard let filter = CIFilter(name: "CIColorCubeWithColorSpace") else {
-            throw ProcessorError.filterCreationFailed
-        }
-
-        filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(dimension, forKey: "inputCubeDimension")
-        filter.setValue(cubeData, forKey: "inputCubeData")
-        filter.setValue(CGColorSpaceCreateDeviceRGB(), forKey: "inputColorSpace")
-
-        guard let output = filter.outputImage else {
+        guard let output = applyCachedLUT(to: image) else {
             throw ProcessorError.filterApplicationFailed
         }
-
         return output
     }
 
@@ -169,33 +161,33 @@ enum ImageProcessor {
         return (dimension, data)
     }
 
-    // MARK: - Render CIImage → UIImage
+    // MARK: - Render CGImage → JPEG Data with EXIF
 
-    private static func renderImage(_ ciImage: CIImage, orientation: CGImagePropertyOrientation = .right) throws -> UIImage {
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+    private static let renderContext = CIContext()
+
+    private static func renderJPEGData(
+        cgImage: CGImage,
+        metadata: [String: Any],
+        orientation: CGImagePropertyOrientation
+    ) throws -> Data {
+        let jpegData = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(
+            jpegData, "public.jpeg" as CFString, 1, nil
+        ) else {
             throw ProcessorError.renderFailed
         }
-        // Convert CGImagePropertyOrientation → UIImage.Orientation
-        let uiOrientation = UIImage.Orientation(orientation)
-        return UIImage(cgImage: cgImage, scale: 1.0, orientation: uiOrientation)
-    }
-}
 
-// MARK: - CGImagePropertyOrientation → UIImage.Orientation
+        // Merge orientation into metadata
+        var properties = metadata
+        properties[kCGImagePropertyOrientation as String] = orientation.rawValue
 
-extension UIImage.Orientation {
-    init(_ cgOrientation: CGImagePropertyOrientation) {
-        switch cgOrientation {
-        case .up:            self = .up
-        case .upMirrored:    self = .upMirrored
-        case .down:          self = .down
-        case .downMirrored:  self = .downMirrored
-        case .left:          self = .left
-        case .leftMirrored:  self = .leftMirrored
-        case .right:         self = .right
-        case .rightMirrored: self = .rightMirrored
+        CGImageDestinationAddImage(dest, cgImage, properties as CFDictionary)
+
+        guard CGImageDestinationFinalize(dest) else {
+            throw ProcessorError.renderFailed
         }
+
+        return jpegData as Data
     }
 }
 

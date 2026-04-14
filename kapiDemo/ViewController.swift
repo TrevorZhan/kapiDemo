@@ -10,14 +10,15 @@ class ViewController: UIViewController {
 
     private let cameraManager = CameraManager()
     private let statusLabel = UILabel()
-    private let captureButton = UIButton(type: .system)
+    private let captureButton = UIButton(type: .custom)
     private let previewContainer = UIView()
     private let filteredPreview = FilteredPreviewView(frame: .zero, device: nil)
     private let toastLabel = UILabel()
     private let lensStack = UIStackView()
     private var lensButtons: [Lens: UIButton] = [:]
-    private let resolutionButton = UIButton(type: .system)
-    private let filterToggleButton = UIButton(type: .system)
+    private let resolutionButton = UIButton(type: .custom)
+    private let filterToggleButton = UIButton(type: .custom)
+    private let livePhotoButton = UIButton(type: .custom)
     private let flashOverlay = UIView()
     private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
     private let notificationFeedback = UINotificationFeedbackGenerator()
@@ -35,6 +36,33 @@ class ViewController: UIViewController {
         filteredPreview.frame = previewContainer.bounds
     }
 
+    // MARK: - Pill Button Helper
+
+    /// Creates a UIButton.Configuration styled as a rounded pill with the given parameters.
+    private static func pillConfig(
+        title: String,
+        foreground: UIColor,
+        background: UIColor
+    ) -> UIButton.Configuration {
+        var config = UIButton.Configuration.filled()
+        config.title = title
+        config.baseForegroundColor = foreground
+        config.baseBackgroundColor = background
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+            return outgoing
+        }
+        return config
+    }
+
+    private static let activeBackground = UIColor.yellow.withAlphaComponent(0.9)
+    private static let inactiveBackground = UIColor.black.withAlphaComponent(0.5)
+    private static let activeForeground = UIColor.black
+    private static let inactiveForeground = UIColor.white
+
     // MARK: - UI Setup
 
     private func setupUI() {
@@ -49,7 +77,7 @@ class ViewController: UIViewController {
         filteredPreview.translatesAutoresizingMaskIntoConstraints = false
         previewContainer.addSubview(filteredPreview)
 
-        // Status label
+        // Status label — tappable on Pro devices to switch pipeline
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.textColor = .white
         statusLabel.textAlignment = .center
@@ -58,6 +86,8 @@ class ViewController: UIViewController {
         statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         statusLabel.layer.cornerRadius = 8
         statusLabel.clipsToBounds = true
+        statusLabel.isUserInteractionEnabled = true
+        statusLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(pipelineToggleTapped)))
         view.addSubview(statusLabel)
 
         // Capture button — white circle with black stroke
@@ -88,22 +118,32 @@ class ViewController: UIViewController {
 
         // Filter toggle (Preview on/off)
         filterToggleButton.translatesAutoresizingMaskIntoConstraints = false
-        filterToggleButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-        filterToggleButton.setTitle("Preview", for: .normal)
-        filterToggleButton.setTitleColor(.black, for: .normal)
-        filterToggleButton.backgroundColor = UIColor.yellow.withAlphaComponent(0.9)
-        filterToggleButton.layer.cornerRadius = 18
-        filterToggleButton.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        filterToggleButton.configuration = Self.pillConfig(
+            title: "Preview",
+            foreground: Self.activeForeground,
+            background: Self.activeBackground
+        )
         filterToggleButton.addTarget(self, action: #selector(filterToggleTapped), for: .touchUpInside)
         view.addSubview(filterToggleButton)
 
+        // Live Photo toggle
+        livePhotoButton.translatesAutoresizingMaskIntoConstraints = false
+        livePhotoButton.configuration = Self.pillConfig(
+            title: "Live",
+            foreground: Self.inactiveForeground,
+            background: Self.inactiveBackground
+        )
+        livePhotoButton.addTarget(self, action: #selector(livePhotoToggleTapped), for: .touchUpInside)
+        livePhotoButton.isHidden = true
+        view.addSubview(livePhotoButton)
+
         // Resolution toggle (12MP / 48MP)
         resolutionButton.translatesAutoresizingMaskIntoConstraints = false
-        resolutionButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-        resolutionButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        resolutionButton.setTitleColor(.white, for: .normal)
-        resolutionButton.layer.cornerRadius = 18
-        resolutionButton.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        resolutionButton.configuration = Self.pillConfig(
+            title: "12MP",
+            foreground: Self.inactiveForeground,
+            background: Self.inactiveBackground
+        )
         resolutionButton.addTarget(self, action: #selector(resolutionButtonTapped), for: .touchUpInside)
         resolutionButton.isHidden = true
         view.addSubview(resolutionButton)
@@ -155,6 +195,11 @@ class ViewController: UIViewController {
             lensStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             lensStack.heightAnchor.constraint(equalToConstant: 40),
 
+            // Live Photo toggle: top-left of the preview
+            livePhotoButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
+            livePhotoButton.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor, constant: 12),
+            livePhotoButton.heightAnchor.constraint(equalToConstant: 36),
+
             // Resolution toggle: top-right of the preview
             resolutionButton.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 12),
             resolutionButton.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
@@ -184,6 +229,7 @@ class ViewController: UIViewController {
                     self.updateLabel()
                     self.buildLensButtons()
                     self.updateResolutionButton()
+                    self.updateLivePhotoButton()
                 } else {
                     self.statusLabel.text = "Camera unavailable"
                 }
@@ -198,14 +244,13 @@ class ViewController: UIViewController {
         lensButtons.removeAll()
 
         for lens in cameraManager.availableLenses {
-            let button = UIButton(type: .system)
+            let button = UIButton(type: .custom)
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.setTitle(lens.label, for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-            button.setTitleColor(.white, for: .normal)
-            button.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-            button.layer.cornerRadius = 18
-            button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+            button.configuration = Self.pillConfig(
+                title: lens.label,
+                foreground: Self.inactiveForeground,
+                background: Self.inactiveBackground
+            )
             button.addTarget(self, action: #selector(lensButtonTapped(_:)), for: .touchUpInside)
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
             button.heightAnchor.constraint(equalToConstant: 36).isActive = true
@@ -219,10 +264,8 @@ class ViewController: UIViewController {
     private func updateLensButtonStates() {
         for (lens, button) in lensButtons {
             let isActive = lens == cameraManager.currentLens
-            button.backgroundColor = isActive
-                ? UIColor.yellow.withAlphaComponent(0.9)
-                : UIColor.black.withAlphaComponent(0.5)
-            button.setTitleColor(isActive ? .black : .white, for: .normal)
+            button.configuration?.baseForegroundColor = isActive ? Self.activeForeground : Self.inactiveForeground
+            button.configuration?.baseBackgroundColor = isActive ? Self.activeBackground : Self.inactiveBackground
         }
     }
 
@@ -245,12 +288,10 @@ class ViewController: UIViewController {
 
     private func updateResolutionButton() {
         resolutionButton.isHidden = !cameraManager.is48MPSupported
-        let title = cameraManager.is48MPEnabled ? "48MP" : "12MP"
-        resolutionButton.setTitle(title, for: .normal)
-        resolutionButton.backgroundColor = cameraManager.is48MPEnabled
-            ? UIColor.yellow.withAlphaComponent(0.9)
-            : UIColor.black.withAlphaComponent(0.5)
-        resolutionButton.setTitleColor(cameraManager.is48MPEnabled ? .black : .white, for: .normal)
+        let active = cameraManager.is48MPEnabled
+        resolutionButton.configuration?.title = active ? "48MP" : "12MP"
+        resolutionButton.configuration?.baseForegroundColor = active ? Self.activeForeground : Self.inactiveForeground
+        resolutionButton.configuration?.baseBackgroundColor = active ? Self.activeBackground : Self.inactiveBackground
     }
 
     @objc private func resolutionButtonTapped() {
@@ -258,23 +299,58 @@ class ViewController: UIViewController {
         updateResolutionButton()
     }
 
+    // MARK: - Live Photo Toggle
+
+    private func updateLivePhotoButton() {
+        livePhotoButton.isHidden = !cameraManager.isLivePhotoCaptureSupported
+        let active = cameraManager.isLivePhotoMode
+        livePhotoButton.configuration?.baseForegroundColor = active ? Self.activeForeground : Self.inactiveForeground
+        livePhotoButton.configuration?.baseBackgroundColor = active ? Self.activeBackground : Self.inactiveBackground
+    }
+
+    @objc private func livePhotoToggleTapped() {
+        cameraManager.isLivePhotoMode.toggle()
+        // Live Photo and ProRAW are mutually exclusive
+        if cameraManager.isLivePhotoMode {
+            cameraManager.useProRAW = false
+            updateLabel()
+        }
+        updateLivePhotoButton()
+    }
+
     // MARK: - Filter Toggle
 
     @objc private func filterToggleTapped() {
         filteredPreview.isFilterEnabled.toggle()
         let enabled = filteredPreview.isFilterEnabled
-        filterToggleButton.backgroundColor = enabled
-            ? UIColor.yellow.withAlphaComponent(0.9)
-            : UIColor.black.withAlphaComponent(0.5)
-        filterToggleButton.setTitleColor(enabled ? .black : .white, for: .normal)
+        filterToggleButton.configuration?.baseForegroundColor = enabled ? Self.activeForeground : Self.inactiveForeground
+        filterToggleButton.configuration?.baseBackgroundColor = enabled ? Self.activeBackground : Self.inactiveBackground
     }
 
     private func updateLabel() {
         if cameraManager.isProRAWSupported {
-            statusLabel.text = " ProRAW mode "
+            if cameraManager.useProRAW {
+                statusLabel.text = " ProRAW "
+                statusLabel.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.8)
+            } else {
+                statusLabel.text = " JPEG/HEIC "
+                statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+            }
         } else {
-            statusLabel.text = " Fallback: JPEG/HEIC "
+            statusLabel.text = " JPEG/HEIC "
+            statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         }
+    }
+
+    @objc private func pipelineToggleTapped() {
+        guard cameraManager.isProRAWSupported else { return }
+        cameraManager.useProRAW.toggle()
+        // ProRAW and Live Photo are mutually exclusive
+        if cameraManager.useProRAW {
+            cameraManager.isLivePhotoMode = false
+            updateLivePhotoButton()
+        }
+        updateLabel()
     }
 
     // MARK: - Capture

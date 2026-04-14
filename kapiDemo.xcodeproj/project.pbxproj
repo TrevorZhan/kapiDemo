@@ -19,6 +19,7 @@
 		AA0000082F76C200008EAD28 /* PhotoSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000072F76C200008EAD28 /* PhotoSaver.swift */; };
 		AA00000A2F76C200008EAD28 /* 典雅绿调.cube in Resources */ = {isa = PBXBuildFile; fileRef = AA0000092F76C200008EAD28 /* 典雅绿调.cube */; };
 		AA00000D2F76C200008EAD28 /* FilteredPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */; };
+		AA00000F2F76C200008EAD28 /* VideoProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E2F76C200008EAD28 /* VideoProcessor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +56,7 @@
 		AA0000092F76C200008EAD28 /* 典雅绿调.cube */ = {isa = PBXFileReference; lastKnownFileType = text; path = "典雅绿调.cube"; sourceTree = "<group>"; };
 		AA00000B2F76C200008EAD28 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilteredPreviewView.swift; sourceTree = "<group>"; };
+		AA00000E2F76C200008EAD28 /* VideoProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -112,6 +114,7 @@
 				AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */,
 				AA0000052F76C200008EAD28 /* ImageProcessor.swift */,
 				AA0000072F76C200008EAD28 /* PhotoSaver.swift */,
+				AA00000E2F76C200008EAD28 /* VideoProcessor.swift */,
 				AA0000092F76C200008EAD28 /* 典雅绿调.cube */,
 				365729512F76C115008EAD28 /* Assets.xcassets */,
 				365729532F76C115008EAD28 /* Preview Content */,
@@ -281,6 +284,7 @@
 				AA00000D2F76C200008EAD28 /* FilteredPreviewView.swift in Sources */,
 				AA0000062F76C200008EAD28 /* ImageProcessor.swift in Sources */,
 				AA0000082F76C200008EAD28 /* PhotoSaver.swift in Sources */,
+				AA00000F2F76C200008EAD28 /* VideoProcessor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -448,6 +452,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = kapiDemo/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access to capture ProRAW and standard photos.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app records audio for Live Photos.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This app saves processed photos to your photo library.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -458,7 +463,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zhantian.kapiDemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -478,6 +483,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = kapiDemo/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access to capture ProRAW and standard photos.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app records audio for Live Photos.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This app saves processed photos to your photo library.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -488,7 +494,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = trevor.kapiDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zhantian.kapiDemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

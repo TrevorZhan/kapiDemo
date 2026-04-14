@@ -5,6 +5,7 @@
 
 import AVFoundation
 import CoreImage
+import ImageIO
 import UIKit
 
 enum Lens: CaseIterable {
@@ -36,9 +37,21 @@ class CameraManager: NSObject {
     private let videoDataOutput = AVCaptureVideoDataOutput()
     private let videoDataQueue = DispatchQueue(label: "camera.videodata.queue", qos: .userInitiated)
     private(set) var isProRAWSupported = false
+    /// When true and ProRAW is supported, capture uses the RAW pipeline. Otherwise JPEG/HEIC.
+    var useProRAW = false
+    /// When true, capture produces a Live Photo (still + video pair with LUT applied).
+    var isLivePhotoMode = false
+    private(set) var isLivePhotoCaptureSupported = false
 
     /// Optional live preview view that receives filtered CIImage frames.
     weak var filteredPreview: FilteredPreviewView?
+
+    // Live Photo state — holds results from the two async delegate callbacks
+    private var pendingLivePhotoRawData: Data?
+    private var pendingLivePhotoIsRAW: Bool = false
+    private var pendingLivePhotoMetadata: [String: Any]?
+    private var pendingLivePhotoMovieURL: URL?
+    private var audioInput: AVCaptureDeviceInput?
 
     private var currentInput: AVCaptureDeviceInput?
     private(set) var availableLenses: [Lens] = []
@@ -97,12 +110,34 @@ class CameraManager: NSObject {
             }
             self.applyPortraitRotationToVideoDataOutput()
 
+            // Configure audio session and add audio input for Live Photos
+            do {
+                let audioSession = AVAudioSession.sharedInstance()
+                try audioSession.setCategory(.playAndRecord, options: [.defaultToSpeaker, .allowBluetooth])
+                try audioSession.setActive(true)
+            } catch {
+                print("Warning: Failed to configure audio session: \(error)")
+            }
+
+            if let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioIn = try? AVCaptureDeviceInput(device: audioDevice),
+               self.session.canAddInput(audioIn) {
+                self.session.addInput(audioIn)
+                self.audioInput = audioIn
+            }
+
             // Enable ProRAW if supported
             if #available(iOS 14.3, *) {
                 if self.photoOutput.isAppleProRAWSupported {
                     self.photoOutput.isAppleProRAWEnabled = true
                     self.isProRAWSupported = true
                 }
+            }
+
+            // Enable Live Photo capture if supported
+            if self.photoOutput.isLivePhotoCaptureSupported {
+                self.photoOutput.isLivePhotoCaptureEnabled = true
+                self.isLivePhotoCaptureSupported = true
             }
 
             // Detect and unlock 48MP support on the wide lens
@@ -201,6 +236,11 @@ class CameraManager: NSObject {
                 self.photoOutput.isAppleProRAWEnabled = true
             }
 
+            // Re-enable Live Photo capture
+            if self.photoOutput.isLivePhotoCaptureSupported {
+                self.photoOutput.isLivePhotoCaptureEnabled = true
+            }
+
             // Re-evaluate 48MP support for the new lens
             self.updateMaxPhotoDimensionsForCurrentDevice(device: newDevice)
 
@@ -217,11 +257,15 @@ class CameraManager: NSObject {
     func capturePhoto(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
         self.captureCompletion = completion
         self.captureStartTime = CFAbsoluteTimeGetCurrent()
+        self.pendingLivePhotoRawData = nil
+        self.pendingLivePhotoIsRAW = false
+        self.pendingLivePhotoMetadata = nil
+        self.pendingLivePhotoMovieURL = nil
 
         let settings: AVCapturePhotoSettings
+        let captureAsProRAW = useProRAW && isProRAWSupported && !isLivePhotoMode
 
-        if #available(iOS 14.3, *), isProRAWSupported {
-            // ProRAW capture: use RAW pixel format
+        if #available(iOS 14.3, *), captureAsProRAW {
             guard let rawFormat = photoOutput.availableRawPhotoPixelFormatTypes.first else {
                 completion(.failure(CameraError.noRAWFormat))
                 return
@@ -239,6 +283,14 @@ class CameraManager: NSObject {
         // Request 48MP if enabled and supported
         if #available(iOS 16.0, *), is48MPEnabled && is48MPSupported {
             settings.maxPhotoDimensions = dims48MP
+        }
+
+        // Live Photo: set a temp movie URL for the video portion
+        if isLivePhotoMode && isLivePhotoCaptureSupported && photoOutput.isLivePhotoCaptureEnabled {
+            let tempDir = FileManager.default.temporaryDirectory
+            let movieURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
+            settings.livePhotoMovieFileURL = movieURL
+            settings.livePhotoVideoCodecType = .hevc
         }
 
         photoOutput.capturePhoto(with: settings, delegate: self)
@@ -268,8 +320,8 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             if photo.isRawPhoto {
                 imageData = photo.fileDataRepresentation()
                 isRAW = true
-            } else if isProRAWSupported {
-                // This is the processed companion photo — skip it
+            } else if useProRAW && isProRAWSupported {
+                // This is the processed companion photo from a ProRAW capture — skip it
                 return
             } else {
                 imageData = photo.fileDataRepresentation()
@@ -286,27 +338,123 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             return
         }
 
-        // Process and save
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            do {
-                let processedImage = try ImageProcessor.processImage(data: data, isRAW: isRAW)
-                PhotoSaver.save(image: processedImage) { [weak self] result in
-                    guard let self = self else { return }
-                    switch result {
-                    case .success:
-                        let elapsed = CFAbsoluteTimeGetCurrent() - self.captureStartTime
-                        self.captureCompletion?(.success(elapsed))
-                    case .failure(let error):
-                        self.captureCompletion?(.failure(error))
+        // Capture the full EXIF metadata from the photo
+        let metadata = photo.metadata
+
+        if isLivePhotoMode && isLivePhotoCaptureSupported {
+            // Live Photo: store the raw data and wait for the video callback.
+            // We defer image processing until the video arrives so we can
+            // embed the matching content identifier into the JPEG.
+            pendingLivePhotoRawData = data
+            pendingLivePhotoIsRAW = isRAW
+            pendingLivePhotoMetadata = metadata
+            finalizeLivePhotoIfReady()
+        } else {
+            // Standard photo: process and save immediately
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                do {
+                    let processedData = try ImageProcessor.processImage(data: data, isRAW: isRAW, metadata: metadata)
+                    PhotoSaver.save(imageData: processedData) { [weak self] result in
+                        self?.completeCapture(result: result)
                     }
+                } catch {
+                    self.captureCompletion?(.failure(error))
                     self.captureCompletion = nil
                 }
+            }
+        }
+    }
+
+    // MARK: - Live Photo Video Callback
+
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingLivePhotoToMovieFileAt outputFileURL: URL,
+        duration: CMTime,
+        photoDisplayTime: CMTime,
+        resolvedSettings: AVCaptureResolvedPhotoSettings,
+        error: Error?
+    ) {
+        if let error = error {
+            captureCompletion?(.failure(error))
+            captureCompletion = nil
+            cleanupTempFile(at: outputFileURL)
+            return
+        }
+
+        // Apply LUT to the video, then store the processed URL
+        VideoProcessor.applyLUT(to: outputFileURL) { [weak self] processedURL in
+            guard let self = self else { return }
+            // Clean up the original unprocessed movie
+            self.cleanupTempFile(at: outputFileURL)
+
+            if let processedURL = processedURL {
+                self.pendingLivePhotoMovieURL = processedURL
+            } else {
+                // If video processing failed, fall back to unprocessed — but it's already deleted.
+                // Signal failure.
+                self.captureCompletion?(.failure(CameraError.livePhotoVideoProcessingFailed))
+                self.captureCompletion = nil
+                return
+            }
+            self.finalizeLivePhotoIfReady()
+        }
+    }
+
+    /// Called after each Live Photo piece (still + video) arrives. Saves when both are ready.
+    private func finalizeLivePhotoIfReady() {
+        guard let rawData = pendingLivePhotoRawData,
+              let metadata = pendingLivePhotoMetadata,
+              let movieURL = pendingLivePhotoMovieURL else {
+            return // waiting for the other piece
+        }
+
+        let isRAW = pendingLivePhotoIsRAW
+
+        Task { [weak self] in
+            let contentID = await VideoProcessor.readContentIdentifier(from: movieURL)
+            guard let self = self else { return }
+
+
+            // Embed the content identifier into the JPEG metadata so it matches the video
+            var enrichedMetadata = metadata
+            if let contentID = contentID {
+                // The content identifier lives in the MakerApple dictionary, key 17
+                var makerApple = enrichedMetadata[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any] ?? [:]
+                makerApple["17"] = contentID
+                enrichedMetadata[kCGImagePropertyMakerAppleDictionary as String] = makerApple
+            }
+
+            do {
+                let processedData = try ImageProcessor.processImage(
+                    data: rawData, isRAW: isRAW, metadata: enrichedMetadata
+                )
+                PhotoSaver.saveLivePhoto(imageData: processedData, movieURL: movieURL) { [weak self] result in
+                    self?.cleanupTempFile(at: movieURL)
+                    self?.completeCapture(result: result)
+                }
             } catch {
+                self.cleanupTempFile(at: movieURL)
                 self.captureCompletion?(.failure(error))
                 self.captureCompletion = nil
             }
         }
+    }
+
+    private func completeCapture(result: Result<Void, Error>) {
+        switch result {
+        case .success:
+            let elapsed = CFAbsoluteTimeGetCurrent() - captureStartTime
+            captureCompletion?(.success(elapsed))
+        case .failure(let error):
+            captureCompletion?(.failure(error))
+        }
+        captureCompletion = nil
+    }
+
+    private func cleanupTempFile(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
     }
 }
 
@@ -330,11 +478,13 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 enum CameraError: LocalizedError {
     case noRAWFormat
     case noImageData
+    case livePhotoVideoProcessingFailed
 
     var errorDescription: String? {
         switch self {
         case .noRAWFormat: return "No RAW format available."
         case .noImageData: return "Failed to get image data."
+        case .livePhotoVideoProcessingFailed: return "Failed to process Live Photo video."
         }
     }
 }

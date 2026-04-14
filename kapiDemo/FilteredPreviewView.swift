@@ -17,8 +17,7 @@ final class FilteredPreviewView: MTKView {
     private var ciContext: CIContext!
     private var commandQueue: MTLCommandQueue!
     private let colorSpace = CGColorSpaceCreateDeviceRGB()
-    private var currentCIImage: CIImage?
-    private let renderLock = NSLock()
+    private var latestImage: CIImage?
 
     override init(frame frameRect: CGRect, device: MTLDevice?) {
         let mtlDevice = device ?? MTLCreateSystemDefaultDevice()
@@ -39,36 +38,30 @@ final class FilteredPreviewView: MTKView {
         self.commandQueue = device.makeCommandQueue()
         self.ciContext = CIContext(mtlDevice: device)
 
-        framebufferOnly = false                          // required for CIContext.render
+        framebufferOnly = false
         colorPixelFormat = .bgra8Unorm
-        isPaused = true                                  // we'll manually trigger draws
+        // Use the built-in draw loop driven by display refresh
+        isPaused = false
         enableSetNeedsDisplay = false
+        preferredFramesPerSecond = 30
         contentMode = .scaleAspectFill
         backgroundColor = .black
     }
 
     /// Called from the camera data output delegate on a background queue.
+    /// Just stores the latest frame — the MTKView draw loop renders it.
     func enqueue(_ image: CIImage) {
-        renderLock.lock()
-        currentCIImage = image
-        renderLock.unlock()
-        DispatchQueue.main.async { [weak self] in
-            self?.draw()
-        }
+        latestImage = image
     }
 
+    /// Called by the MTKView internal draw loop at preferredFramesPerSecond.
     override func draw(_ rect: CGRect) {
-        renderLock.lock()
-        let source = currentCIImage
-        renderLock.unlock()
-
-        guard let source = source,
+        guard let source = latestImage,
               let drawable = currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer() else {
             return
         }
 
-        // Apply LUT (reuses cached cube data from ImageProcessor)
         let filtered: CIImage
         if isFilterEnabled, let styled = ImageProcessor.applyCachedLUT(to: source) {
             filtered = styled
@@ -76,7 +69,6 @@ final class FilteredPreviewView: MTKView {
             filtered = source
         }
 
-        // Aspect-fill scale + center into the drawable
         let drawableSize = drawable.layer.drawableSize
         let scaled = aspectFill(filtered, into: drawableSize)
 
