@@ -475,6 +475,12 @@ class ViewController: UIViewController {
         cameraManager.capturePhoto { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+
+                // If the app was backgrounded while this capture was processing,
+                // skip all UI feedback — the photo is either in the album or not,
+                // and a stale alert on return is more disruptive than informative.
+                guard UIApplication.shared.applicationState == .active else { return }
+
                 switch result {
                 case .success(let elapsed):
                     self.notificationFeedback.notificationOccurred(.success)
