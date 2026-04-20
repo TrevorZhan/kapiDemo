@@ -63,7 +63,26 @@ class CameraManager: NSObject {
 
     /// Active captures keyed by AVCapturePhotoSettings.uniqueID
     private var activeCaptures: [Int64: CaptureContext] = [:]
+
+    // Background task — keeps the app alive long enough to finish processing
+    // and saving all in-flight captures when the user exits the app mid-burst.
+    private var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
+    private var activeCaptureCount = 0
+
     private var audioInput: AVCaptureDeviceInput?
+
+    // KVO token for monitoring focus adjustment completion
+    private var focusObservation: NSKeyValueObservation?
+
+    // KVO token for monitoring continuous auto-exposure changes
+    private var exposureObservation: NSKeyValueObservation?
+    /// Set to true while a tap-triggered exposure adjustment is in flight,
+    /// so the auto-exposure indicator is suppressed for user-initiated adjustments.
+    private var isTapAdjusting = false
+
+    /// Called on the main thread whenever the camera auto-adjusts exposure
+    /// without a user tap (e.g. moving from a bright area to a dark one).
+    var onAutoExposureAdjust: (() -> Void)?
 
     private var currentInput: AVCaptureDeviceInput?
     private(set) var availableLenses: [Lens] = []
@@ -154,6 +173,7 @@ class CameraManager: NSObject {
 
             self.session.commitConfiguration()
             self.session.startRunning()
+            self.attachExposureObserver(to: camera)
             completion(true)
         }
     }
@@ -257,6 +277,7 @@ class CameraManager: NSObject {
             self.applyPortraitRotationToVideoDataOutput()
 
             self.session.commitConfiguration()
+            self.attachExposureObserver(to: newDevice)
             DispatchQueue.main.async { completion?(true) }
         }
     }
@@ -299,7 +320,44 @@ class CameraManager: NSObject {
         let context = CaptureContext(completion: completion)
         activeCaptures[settings.uniqueID] = context
 
+        // Ensure the app stays alive in the background until this capture is saved
+        beginBackgroundTaskIfNeeded()
+
         photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+
+    // MARK: - Background Task
+
+    /// Increments the in-flight capture count and starts a background task on first call.
+    private func beginBackgroundTaskIfNeeded() {
+        activeCaptureCount += 1
+        guard backgroundTaskID == .invalid else { return }
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "com.kapi.photoCapture") { [weak self] in
+            self?.handleBackgroundTaskExpiration()
+        }
+    }
+
+    /// Decrements the in-flight count and ends the background task when all captures are done.
+    private func endBackgroundTaskIfDone() {
+        activeCaptureCount -= 1
+        guard activeCaptureCount <= 0 else { return }
+        activeCaptureCount = 0
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+    }
+
+    /// Called by iOS when background time is nearly exhausted (~30 s window exceeded).
+    /// Cleans up temp files for any still-pending captures, then yields the task.
+    private func handleBackgroundTaskExpiration() {
+        for (_, context) in activeCaptures {
+            if let url = context.livePhotoMovieURL {
+                cleanupTempFile(at: url)
+            }
+        }
+        activeCaptures.removeAll()
+        activeCaptureCount = 0
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
     }
 }
 
@@ -459,10 +517,113 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         case .failure(let error):
             context.completion(.failure(error))
         }
+        endBackgroundTaskIfDone()
     }
 
     private func cleanupTempFile(at url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    // MARK: - Focus & Exposure
+
+    /// Minimum exposure change (in EV stops) required to show the auto-exposure indicator.
+    /// 1.0 EV = one full stop (exposure doubles or halves). Micro-corrections stay silent.
+    private static let autoExposureEVThreshold: Double = 1.0
+
+    /// Computes the current exposure value (EV) from the device's ISO and exposure duration.
+    /// EV increases with brighter exposure; each stop is a factor of 2.
+    private func currentEV(from device: AVCaptureDevice) -> Double {
+        let iso = Double(device.iso)
+        let duration = device.exposureDuration.seconds
+        guard iso > 0, duration > 0 else { return 0 }
+        return log2(iso / 100.0) + log2(1.0 / duration)
+    }
+
+    /// Observes `isAdjustingExposure` on `device`. Records EV when adjustment starts,
+    /// then compares with EV when it ends. Only fires `onAutoExposureAdjust` when the
+    /// change exceeds the threshold — suppressing constant micro-corrections.
+    private func attachExposureObserver(to device: AVCaptureDevice) {
+        exposureObservation?.invalidate()
+        var preAdjustmentEV: Double?
+
+        exposureObservation = device.observe(\.isAdjustingExposure, options: .new) { [weak self, weak device] _, change in
+            guard let self = self, let device = device,
+                  !self.isTapAdjusting else { return }
+
+            if change.newValue == true {
+                // Adjustment starting — snapshot the current EV
+                preAdjustmentEV = self.currentEV(from: device)
+            } else if change.newValue == false, let startEV = preAdjustmentEV {
+                // Adjustment done — compare with new settled EV
+                let endEV = self.currentEV(from: device)
+                preAdjustmentEV = nil
+                guard abs(endEV - startEV) >= Self.autoExposureEVThreshold else { return }
+                DispatchQueue.main.async {
+                    self.onAutoExposureAdjust?()
+                }
+            }
+        }
+    }
+
+    /// Locks focus and exposure to the tapped point, then returns to continuous tracking.
+    /// `tapPoint` is in the coordinate space of the preview view; `viewSize` is its bounds size.
+    func setFocusAndExposure(at tapPoint: CGPoint, in viewSize: CGSize) {
+        guard let device = currentInput?.device else { return }
+
+        // Convert portrait view coordinates → normalized camera device coordinates.
+        // The sensor is natively landscape-right; our preview is rotated 90° to portrait.
+        //   cameraX = tapY / viewHeight   (portrait top  → sensor left)
+        //   cameraY = 1 − tapX / viewWidth (portrait left → sensor bottom)
+        let cameraPoint = CGPoint(
+            x: tapPoint.y / viewSize.height,
+            y: 1.0 - tapPoint.x / viewSize.width
+        )
+
+        isTapAdjusting = true
+
+        do {
+            try device.lockForConfiguration()
+
+            if device.isFocusPointOfInterestSupported,
+               device.isFocusModeSupported(.autoFocus) {
+                device.focusPointOfInterest = cameraPoint
+                device.focusMode = .autoFocus
+            }
+
+            if device.isExposurePointOfInterestSupported,
+               device.isExposureModeSupported(.autoExpose) {
+                device.exposurePointOfInterest = cameraPoint
+                device.exposureMode = .autoExpose
+            }
+
+            device.unlockForConfiguration()
+        } catch {
+            isTapAdjusting = false
+            return
+        }
+
+        // Once the one-shot focus/expose finishes, switch back to continuous
+        // tracking so the camera keeps following the scene naturally.
+        focusObservation?.invalidate()
+        focusObservation = device.observe(\.isAdjustingFocus, options: .new) { [weak self, weak device] _, change in
+            guard let device = device,
+                  change.newValue == false else { return }
+
+            self?.focusObservation?.invalidate()
+            self?.focusObservation = nil
+            self?.isTapAdjusting = false
+
+            do {
+                try device.lockForConfiguration()
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+                device.unlockForConfiguration()
+            } catch {}
+        }
     }
 }
 

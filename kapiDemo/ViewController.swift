@@ -20,9 +20,14 @@ class ViewController: UIViewController {
     private let filterToggleButton = UIButton(type: .custom)
     private let livePhotoButton = UIButton(type: .custom)
     private let flashOverlay = UIView()
+    private let focusIndicator = UIView()
+    private let autoExposureIndicator = UIView()
     private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
     private let notificationFeedback = UINotificationFeedbackGenerator()
+    private let focusFeedback = UIImpactFeedbackGenerator(style: .light)
     private var toastHideWorkItem: DispatchWorkItem?
+    private var focusHideWorkItem: DispatchWorkItem?
+    private var autoExposureHideWorkItem: DispatchWorkItem?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -107,6 +112,29 @@ class ViewController: UIViewController {
         flashOverlay.alpha = 0
         flashOverlay.isUserInteractionEnabled = false
         previewContainer.addSubview(flashOverlay)
+
+        // Focus indicator — yellow square border, positioned at tap point
+        focusIndicator.frame = CGRect(x: 0, y: 0, width: 75, height: 75)
+        focusIndicator.backgroundColor = .clear
+        focusIndicator.layer.borderColor = UIColor.systemYellow.cgColor
+        focusIndicator.layer.borderWidth = 1.5
+        focusIndicator.alpha = 0
+        focusIndicator.isUserInteractionEnabled = false
+        previewContainer.addSubview(focusIndicator)
+
+        // Auto-exposure indicator — slightly larger box, centered, fades in when camera
+        // autonomously adjusts exposure (e.g. walking from bright outdoors to indoors).
+        autoExposureIndicator.frame = CGRect(x: 0, y: 0, width: 90, height: 90)
+        autoExposureIndicator.backgroundColor = .clear
+        autoExposureIndicator.layer.borderColor = UIColor.systemYellow.cgColor
+        autoExposureIndicator.layer.borderWidth = 1.5
+        autoExposureIndicator.alpha = 0
+        autoExposureIndicator.isUserInteractionEnabled = false
+        previewContainer.addSubview(autoExposureIndicator)
+
+        // Tap gesture on the preview to focus/expose
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(previewTapped(_:)))
+        previewContainer.addGestureRecognizer(tapGesture)
 
         // Lens selector stack — populated after camera configure
         lensStack.translatesAutoresizingMaskIntoConstraints = false
@@ -222,6 +250,9 @@ class ViewController: UIViewController {
 
     private func setupCamera() {
         cameraManager.filteredPreview = filteredPreview
+        cameraManager.onAutoExposureAdjust = { [weak self] in
+            self?.showAutoExposureIndicator()
+        }
         cameraManager.configure { [weak self] success in
             guard let self = self else { return }
             DispatchQueue.main.async {
@@ -351,6 +382,61 @@ class ViewController: UIViewController {
             updateLivePhotoButton()
         }
         updateLabel()
+    }
+
+    // MARK: - Tap to Focus / Expose
+
+    /// Shows a slightly larger centered box when the camera auto-adjusts exposure
+    /// without user interaction (e.g. moving between lighting environments).
+    private func showAutoExposureIndicator() {
+        // Don't interrupt an in-progress auto-exposure animation
+        guard autoExposureIndicator.alpha < 0.1 else { return }
+
+        autoExposureIndicator.center = CGPoint(
+            x: previewContainer.bounds.midX,
+            y: previewContainer.bounds.midY
+        )
+        autoExposureHideWorkItem?.cancel()
+
+        UIView.animate(withDuration: 0.2) {
+            self.autoExposureIndicator.alpha = 1
+        }
+
+        let hideWork = DispatchWorkItem { [weak self] in
+            UIView.animate(withDuration: 0.4) { self?.autoExposureIndicator.alpha = 0 }
+        }
+        autoExposureHideWorkItem = hideWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: hideWork)
+    }
+
+    @objc private func previewTapped(_ gesture: UITapGestureRecognizer) {
+        let tapPoint = gesture.location(in: previewContainer)
+
+        // Animate the focus indicator to the tap point
+        focusHideWorkItem?.cancel()
+        focusIndicator.layer.removeAllAnimations()
+        focusIndicator.center = tapPoint
+        focusIndicator.transform = CGAffineTransform(scaleX: 1.4, y: 1.4)
+        focusIndicator.alpha = 1
+
+        UIView.animate(
+            withDuration: 0.25,
+            delay: 0,
+            usingSpringWithDamping: 0.6,
+            initialSpringVelocity: 0,
+            options: [],
+            animations: { self.focusIndicator.transform = .identity }
+        )
+
+        let hideWork = DispatchWorkItem { [weak self] in
+            UIView.animate(withDuration: 0.3) { self?.focusIndicator.alpha = 0 }
+        }
+        focusHideWorkItem = hideWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: hideWork)
+
+        // Light haptic and adjust focus/exposure
+        focusFeedback.impactOccurred()
+        cameraManager.setFocusAndExposure(at: tapPoint, in: previewContainer.bounds.size)
     }
 
     // MARK: - Capture
