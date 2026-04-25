@@ -50,6 +50,10 @@ class CameraManager: NSObject {
     private class CaptureContext {
         let completion: (Result<TimeInterval, Error>) -> Void
         let startTime: CFAbsoluteTime
+        /// Stamped when image data is received and actual processing begins.
+        /// Used to measure only the processing+saving time, independent of
+        /// how long the capture sat in the burst queue before its turn.
+        var processingStartTime: CFAbsoluteTime = 0
         var livePhotoRawData: Data?
         var livePhotoIsRAW: Bool = false
         var livePhotoMetadata: [String: Any]?
@@ -284,7 +288,15 @@ class CameraManager: NSObject {
 
     // MARK: - Capture
 
+    /// Maximum number of simultaneous in-flight captures before new ones are silently dropped.
+    /// Exceeding AVCapturePhotoOutput's internal capacity produces "Cannot take photo" errors.
+    private static let maxConcurrentCaptures = 8
+
     func capturePhoto(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
+        // Silently drop taps when the photo output is saturated — avoids AVFoundation
+        // capacity errors that would surface as "Cannot take photo" toasts during burst.
+        guard activeCaptures.count < Self.maxConcurrentCaptures else { return }
+
         let settings: AVCapturePhotoSettings
         let captureAsProRAW = useProRAW && isProRAWSupported && !isLivePhotoMode
 
@@ -375,6 +387,11 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
 
         if let error = error {
             activeCaptures.removeValue(forKey: captureID)
+            endBackgroundTaskIfDone()
+            // Swallow AVFoundation hardware/capacity errors (e.g. "Cannot take photo"
+            // when the photo output is momentarily saturated during rapid burst shooting).
+            // These are expected under load and not meaningful to the user.
+            guard (error as NSError).domain != AVFoundationErrorDomain else { return }
             context.completion(.failure(error))
             return
         }
@@ -417,7 +434,11 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             context.livePhotoMetadata = metadata
             finalizeLivePhotoIfReady(captureID: captureID)
         } else {
-            // Standard photo: process and save immediately
+            // Standard photo: process and save immediately.
+            // Stamp processing start time now — after image data arrives —
+            // so the reported duration measures processing+saving only,
+            // not the burst queue wait before this photo's turn.
+            context.processingStartTime = CFAbsoluteTimeGetCurrent()
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else { return }
                 do {
@@ -481,6 +502,10 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
 
         let isRAW = context.livePhotoIsRAW
 
+        // Stamp processing start time now that both pieces are ready and
+        // actual work (content-ID read + image processing + save) begins.
+        context.processingStartTime = CFAbsoluteTimeGetCurrent()
+
         Task { [weak self] in
             let contentID = await VideoProcessor.readContentIdentifier(from: movieURL)
             guard let self = self else { return }
@@ -512,7 +537,11 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         guard let context = activeCaptures.removeValue(forKey: captureID) else { return }
         switch result {
         case .success:
-            let elapsed = CFAbsoluteTimeGetCurrent() - context.startTime
+            // Use processingStartTime (stamped when image data arrives) so the
+            // reported duration reflects only the processing+saving work for this
+            // individual photo, not burst queue wait time from earlier photos.
+            let ref = context.processingStartTime > 0 ? context.processingStartTime : context.startTime
+            let elapsed = CFAbsoluteTimeGetCurrent() - ref
             context.completion(.success(elapsed))
         case .failure(let error):
             context.completion(.failure(error))
