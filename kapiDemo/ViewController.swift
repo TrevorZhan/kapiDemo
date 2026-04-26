@@ -37,11 +37,19 @@ class ViewController: UIViewController {
     private var captureCarousel: UICollectionView!
     private var carouselItems: [CaptureItem] = []
 
+    // Performance monitoring panel: top-left overlay showing FPS, CPU, memory, etc.
+    private let performanceLabel = UILabel()
+    private let performanceMonitor = PerformanceMonitor()
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
         setupUI()
         setupCamera()
+    }
+
+    deinit {
+        performanceMonitor.stop()
     }
 
     override func viewDidLayoutSubviews() {
@@ -212,6 +220,18 @@ class ViewController: UIViewController {
         captureCarousel.register(CaptureItemCell.self, forCellWithReuseIdentifier: CaptureItemCell.reuseID)
         view.addSubview(captureCarousel)
 
+        // Performance panel — white-on-dark monospaced overlay, top-left of preview
+        performanceLabel.translatesAutoresizingMaskIntoConstraints = false
+        performanceLabel.numberOfLines = 0
+        performanceLabel.font = UIFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        performanceLabel.textColor = .white
+        performanceLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        performanceLabel.layer.cornerRadius = 6
+        performanceLabel.clipsToBounds = true
+        performanceLabel.isUserInteractionEnabled = false
+        performanceLabel.text = "  CAP: –  Queue: –\n  FPS: –  CPU: –\n  MEM: –  Latency(capture): –\n  Latency(post): –  Jank: –\n  Thermal: –  Dropped: –  "
+        view.addSubview(performanceLabel)
+
         // Toast label — floating overlay for capture timing
         toastLabel.translatesAutoresizingMaskIntoConstraints = false
         toastLabel.textColor = .white
@@ -289,6 +309,10 @@ class ViewController: UIViewController {
             captureCarousel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             captureCarousel.bottomAnchor.constraint(equalTo: captureHUDLabel.topAnchor, constant: -8),
             captureCarousel.heightAnchor.constraint(equalToConstant: 88),
+
+            // Performance panel: top-left corner of the preview, overlapping it
+            performanceLabel.topAnchor.constraint(equalTo: previewContainer.topAnchor, constant: 10),
+            performanceLabel.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor, constant: 10),
         ])
     }
 
@@ -302,6 +326,24 @@ class ViewController: UIViewController {
         cameraManager.onCaptureUpdate = { [weak self] snapshot in
             self?.applyCaptureSnapshot(snapshot)
         }
+
+        // Performance monitor: pulls dynamic fields from camera + preview,
+        // then fills in CPU/memory/thermal before calling onUpdate.
+        performanceMonitor.metricsProvider = { [weak self] in
+            guard let self = self else { return PerformanceMetrics() }
+            var m = PerformanceMetrics()
+            m.cap                = CameraManager.maxConcurrentCaptures
+            m.queue              = self.cameraManager.activeCapturesCount
+            m.fps                = self.filteredPreview.currentFPS
+            m.jankPercent        = self.filteredPreview.jankPercent
+            m.captureLatencyMs   = self.cameraManager.lastCaptureLatencyMs
+            m.postLatencyMs      = self.cameraManager.lastPostLatencyMs
+            m.droppedFrames      = self.cameraManager.droppedFrames
+            return m
+        }
+        performanceMonitor.onUpdate = { [weak self] metrics in
+            self?.updatePerformanceLabel(metrics)
+        }
         cameraManager.configure { [weak self] success in
             guard let self = self else { return }
             DispatchQueue.main.async {
@@ -310,6 +352,7 @@ class ViewController: UIViewController {
                     self.buildLensButtons()
                     self.updateResolutionButton()
                     self.updateLivePhotoButton()
+                    self.performanceMonitor.start()
                 } else {
                     self.statusLabel.text = "Camera unavailable"
                 }
@@ -587,6 +630,16 @@ class ViewController: UIViewController {
             self.toastHideWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
         }
+    }
+
+    private func updatePerformanceLabel(_ m: PerformanceMetrics) {
+        performanceLabel.text = """
+          CAP: \(m.cap)  Queue: \(m.queue)
+          FPS: \(String(format: "%.1f", m.fps))  CPU: \(String(format: "%.1f", m.cpuPercent))%
+          MEM: \(String(format: "%.0f", m.memoryMB))MB  Latency(capture): \(m.captureLatencyMs)ms
+          Latency(post): \(m.postLatencyMs)ms  Jank: \(String(format: "%.1f", m.jankPercent))%
+          Thermal: \(m.thermal.label)  Dropped: \(m.droppedFrames)
+        """
     }
 
     private func showAlert(title: String, message: String) {

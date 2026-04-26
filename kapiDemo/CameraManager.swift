@@ -101,6 +101,9 @@ class CameraManager: NSObject {
     /// Active captures keyed by AVCapturePhotoSettings.uniqueID
     private var activeCaptures: [Int64: CaptureContext] = [:]
 
+    /// Number of captures currently in-flight (for the performance HUD).
+    var activeCapturesCount: Int { activeCaptures.count }
+
     // Background task — keeps the app alive long enough to finish processing
     // and saving all in-flight captures when the user exits the app mid-burst.
     private var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
@@ -342,7 +345,21 @@ class CameraManager: NSObject {
 
     /// Maximum number of simultaneous in-flight captures before new ones are silently dropped.
     /// Exceeding AVCapturePhotoOutput's internal capacity produces "Cannot take photo" errors.
-    private static let maxConcurrentCaptures = 8
+    static let maxConcurrentCaptures = 8
+
+    // MARK: - Performance metrics (read by the debug HUD)
+
+    /// Milliseconds from shutter tap to image data arriving in the delegate.
+    /// Updated whenever a capture's image data is received.
+    private(set) var lastCaptureLatencyMs: Int = 0
+
+    /// Milliseconds from image data arrival to Photos save completing.
+    /// Updated whenever a capture finishes successfully.
+    private(set) var lastPostLatencyMs: Int = 0
+
+    /// Running total of preview frames dropped by AVCaptureVideoDataOutput
+    /// because they arrived faster than the app could process them.
+    private(set) var droppedFrames: Int = 0
 
     func capturePhoto(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
         // Silently drop taps when the photo output is saturated — avoids AVFoundation
@@ -600,6 +617,7 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // so the reported duration measures processing+saving only,
             // not the burst queue wait before this photo's turn.
             context.processingStartTime = CFAbsoluteTimeGetCurrent()
+            lastCaptureLatencyMs = Int((context.processingStartTime - context.startTime) * 1000)
             let placeholderSize = data.count
             updateCarouselItem(captureID) {
                 $0.placeholderSize = placeholderSize
@@ -677,6 +695,7 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         // Stamp processing start time now that both pieces are ready and
         // actual work (content-ID read + image processing + save) begins.
         context.processingStartTime = CFAbsoluteTimeGetCurrent()
+        lastCaptureLatencyMs = Int((context.processingStartTime - context.startTime) * 1000)
         let placeholderSize = rawData.count
         updateCarouselItem(captureID) {
             $0.placeholderSize = placeholderSize
@@ -725,6 +744,7 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // individual photo, not burst queue wait time from earlier photos.
             let ref = context.processingStartTime > 0 ? context.processingStartTime : context.startTime
             let elapsed = CFAbsoluteTimeGetCurrent() - ref
+            lastPostLatencyMs = Int(elapsed * 1000)
             bumpDone()
             updateCarouselItem(captureID) { $0.status = .ready }
             scheduleCarouselEviction(captureID)
@@ -856,6 +876,17 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         filteredPreview?.enqueue(ciImage)
+    }
+
+    /// Increments the dropped-frame counter when the app can't keep up with
+    /// the camera's output rate. `alwaysDiscardsLateVideoFrames = true` means
+    /// this fires whenever the render pipeline is the bottleneck.
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didDrop sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        droppedFrames += 1
     }
 }
 

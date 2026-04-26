@@ -27,6 +27,18 @@ final class FilteredPreviewView: MTKView {
     private var cachedImageSize: CGSize = .zero
     private var cachedDrawableSize: CGSize = .zero
 
+    // MARK: - FPS / Jank tracking
+
+    /// Rolling window of (timestamp, wasJanky) tuples, pruned to the last 1 second.
+    /// Jank = the gap from the previous draw exceeded 1.5× the 60 fps target interval.
+    private var drawHistory: [(time: CFAbsoluteTime, janky: Bool)] = []
+    private static let targetFrameInterval: CFAbsoluteTime = 1.0 / 60.0
+
+    /// Frames per second, computed over the last 1-second rolling window.
+    private(set) var currentFPS: Double = 0
+    /// Percentage of frames in the last second that arrived late (>25 ms gap).
+    private(set) var jankPercent: Double = 0
+
     override init(frame frameRect: CGRect, device: MTLDevice?) {
         let mtlDevice = device ?? MTLCreateSystemDefaultDevice()
         super.init(frame: frameRect, device: mtlDevice)
@@ -97,6 +109,22 @@ final class FilteredPreviewView: MTKView {
 
         commandBuffer.present(drawable)
         commandBuffer.commit()
+
+        updateFPSAndJank()
+    }
+
+    private func updateFPSAndJank() {
+        let now = CFAbsoluteTimeGetCurrent()
+        let lastTime = drawHistory.last?.time
+        let janky = lastTime.map { now - $0 > Self.targetFrameInterval * 1.5 } ?? false
+
+        // Prune entries older than 1 second and append the new one
+        drawHistory.removeAll { now - $0.time > 1.0 }
+        drawHistory.append((time: now, janky: janky))
+
+        currentFPS = Double(drawHistory.count)
+        let jankCount = drawHistory.filter { $0.janky }.count
+        jankPercent = drawHistory.isEmpty ? 0 : Double(jankCount) / Double(drawHistory.count) * 100
     }
 
     /// Returns a cached affine transform that aspect-fills the image into the drawable size.
