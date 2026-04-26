@@ -26,8 +26,16 @@ class ViewController: UIViewController {
     private let notificationFeedback = UINotificationFeedbackGenerator()
     private let focusFeedback = UIImpactFeedbackGenerator(style: .light)
     private var toastHideWorkItem: DispatchWorkItem?
+    private var toastQueue: [String] = []
+    private var isShowingToast = false
     private var focusHideWorkItem: DispatchWorkItem?
     private var autoExposureHideWorkItem: DispatchWorkItem?
+
+    // Capture-tracking HUD: thumbnail carousel + counters in the bottom-left.
+    // Shows live status of all in-flight and recently completed captures.
+    private let captureHUDLabel = UILabel()
+    private var captureCarousel: UICollectionView!
+    private var carouselItems: [CaptureItem] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -176,6 +184,34 @@ class ViewController: UIViewController {
         resolutionButton.isHidden = true
         view.addSubview(resolutionButton)
 
+        // Capture HUD label — bottom-left, shows in-flight/done/rejected counters
+        captureHUDLabel.translatesAutoresizingMaskIntoConstraints = false
+        captureHUDLabel.numberOfLines = 2
+        captureHUDLabel.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
+        captureHUDLabel.textColor = .white
+        captureHUDLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        captureHUDLabel.layer.cornerRadius = 6
+        captureHUDLabel.clipsToBounds = true
+        captureHUDLabel.text = "  In-flight: 0/8\n  Done: 0  Rejected: 0  "
+        captureHUDLabel.isUserInteractionEnabled = false
+        view.addSubview(captureHUDLabel)
+
+        // Capture carousel — horizontal strip of recent capture thumbnails
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.itemSize = CGSize(width: 88, height: 88)
+        layout.minimumLineSpacing = 8
+        layout.minimumInteritemSpacing = 8
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        captureCarousel = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        captureCarousel.translatesAutoresizingMaskIntoConstraints = false
+        captureCarousel.backgroundColor = .clear
+        captureCarousel.showsHorizontalScrollIndicator = false
+        captureCarousel.alwaysBounceHorizontal = true
+        captureCarousel.dataSource = self
+        captureCarousel.register(CaptureItemCell.self, forCellWithReuseIdentifier: CaptureItemCell.reuseID)
+        view.addSubview(captureCarousel)
+
         // Toast label — floating overlay for capture timing
         toastLabel.translatesAutoresizingMaskIntoConstraints = false
         toastLabel.textColor = .white
@@ -243,6 +279,16 @@ class ViewController: UIViewController {
             toastLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             toastLabel.heightAnchor.constraint(equalToConstant: 36),
             toastLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
+
+            // Capture HUD label: bottom-left, just above lens stack — overlays preview bottom
+            captureHUDLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            captureHUDLabel.bottomAnchor.constraint(equalTo: lensStack.topAnchor, constant: -8),
+
+            // Capture carousel: full-width strip just above the HUD label
+            captureCarousel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            captureCarousel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            captureCarousel.bottomAnchor.constraint(equalTo: captureHUDLabel.topAnchor, constant: -8),
+            captureCarousel.heightAnchor.constraint(equalToConstant: 88),
         ])
     }
 
@@ -252,6 +298,9 @@ class ViewController: UIViewController {
         cameraManager.filteredPreview = filteredPreview
         cameraManager.onAutoExposureAdjust = { [weak self] in
             self?.showAutoExposureIndicator()
+        }
+        cameraManager.onCaptureUpdate = { [weak self] snapshot in
+            self?.applyCaptureSnapshot(snapshot)
         }
         cameraManager.configure { [weak self] success in
             guard let self = self else { return }
@@ -508,24 +557,78 @@ class ViewController: UIViewController {
         }
     }
 
+    /// Enqueues a toast message. Each toast is shown for exactly 0.5 s so
+    /// burst-shot completion messages don't overwrite each other — they chain
+    /// one after the next, letting the user count how many came through.
     private func showToast(_ text: String) {
-        toastHideWorkItem?.cancel()
+        toastQueue.append(text)
+        drainToastQueue()
+    }
+
+    private func drainToastQueue() {
+        guard !isShowingToast, !toastQueue.isEmpty else { return }
+        isShowingToast = true
+        let text = toastQueue.removeFirst()
+
         toastLabel.text = "  \(text)  "
-        UIView.animate(withDuration: 0.2) {
+        UIView.animate(withDuration: 0.1) {
             self.toastLabel.alpha = 1
-        }
-        let workItem = DispatchWorkItem { [weak self] in
-            UIView.animate(withDuration: 0.3) {
-                self?.toastLabel.alpha = 0
+        } completion: { [weak self] _ in
+            guard let self = self else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                UIView.animate(withDuration: 0.1, animations: {
+                    self.toastLabel.alpha = 0
+                }, completion: { [weak self] _ in
+                    self?.isShowingToast = false
+                    self?.drainToastQueue()
+                })
             }
+            self.toastHideWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
         }
-        toastHideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: workItem)
     }
 
     private func showAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+
+    // MARK: - Capture Tracking HUD
+
+    /// Always called on the main thread (CameraManager dispatches there).
+    /// Updates the bottom-left counter label and reloads the thumbnail carousel.
+    private func applyCaptureSnapshot(_ snapshot: CaptureSnapshot) {
+        captureHUDLabel.text = "  In-flight: \(snapshot.inFlight)/\(snapshot.maxConcurrent)\n  Done: \(snapshot.doneCount)  Rejected: \(snapshot.rejectedCount)  "
+
+        // Detect new items — insert with auto-scroll; otherwise just refresh contents.
+        let oldIDs = carouselItems.map { $0.id }
+        let newIDs = snapshot.items.map { $0.id }
+        let appendedNewest = newIDs.last != oldIDs.last && newIDs.count >= oldIDs.count
+        carouselItems = snapshot.items
+        captureCarousel.reloadData()
+
+        guard !carouselItems.isEmpty else { return }
+        if appendedNewest {
+            // Scroll to the most recent (rightmost) item without animation —
+            // animated scrolls jitter when many captures land in quick succession.
+            let last = IndexPath(item: carouselItems.count - 1, section: 0)
+            captureCarousel.scrollToItem(at: last, at: .right, animated: false)
+        }
+    }
+}
+
+// MARK: - UICollectionViewDataSource
+
+extension ViewController: UICollectionViewDataSource {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        carouselItems.count
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: CaptureItemCell.reuseID, for: indexPath) as! CaptureItemCell
+        cell.configure(with: carouselItems[indexPath.item])
+        return cell
     }
 }

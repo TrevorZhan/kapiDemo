@@ -8,6 +8,39 @@ import CoreImage
 import ImageIO
 import UIKit
 
+// MARK: - Capture Tracking Model
+
+/// Lifecycle stages reported to the UI for the debug carousel.
+enum CaptureStatus {
+    case capturing      // shutter fired, awaiting image data from AVFoundation
+    case finalizing     // image data in hand, applying LUT + saving to Photos
+    case ready          // saved to Photos successfully
+    case failed
+}
+
+/// One capture's worth of UI-facing state.
+struct CaptureItem {
+    let id: Int64
+    var status: CaptureStatus
+    /// Bytes of the captured image data before LUT processing.
+    var placeholderSize: Int = 0
+    /// Bytes of the LUT-applied JPEG. Set once processing finishes.
+    var finalSize: Int?
+    /// Small downsampled preview of the processed image, for the carousel.
+    var thumbnail: UIImage?
+}
+
+/// Snapshot of all tracked capture state — emitted on every transition.
+struct CaptureSnapshot {
+    let inFlight: Int
+    let maxConcurrent: Int
+    let doneCount: Int
+    let rejectedCount: Int
+    /// Carousel items, oldest first. Includes in-flight plus recently
+    /// completed entries that haven't yet aged out.
+    let items: [CaptureItem]
+}
+
 enum Lens: CaseIterable {
     case ultraWide  // 0.5×
     case wide       // 1×
@@ -72,6 +105,25 @@ class CameraManager: NSObject {
     // and saving all in-flight captures when the user exits the app mid-burst.
     private var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
     private var activeCaptureCount = 0
+
+    // MARK: - UI tracking (debug HUD + thumbnail carousel)
+
+    /// Total successful saves since the manager was created.
+    private(set) var doneCount: Int = 0
+    /// Number of shutter taps dropped because the photo output was saturated.
+    private(set) var rejectedCount: Int = 0
+
+    /// Carousel state: in-flight plus recently completed entries.
+    /// Mutated only on the main queue so the UI can read it safely.
+    private var carouselItems: [Int64: CaptureItem] = [:]
+    private var carouselOrder: [Int64] = []
+    private var pendingEvictions: [Int64: DispatchWorkItem] = [:]
+
+    /// Fired on the main queue whenever any tracked capture state changes.
+    var onCaptureUpdate: ((CaptureSnapshot) -> Void)?
+
+    /// How long a completed item lingers in the carousel before fading out.
+    private static let completedItemTTL: TimeInterval = 10.0
 
     private var audioInput: AVCaptureDeviceInput?
 
@@ -295,7 +347,10 @@ class CameraManager: NSObject {
     func capturePhoto(completion: @escaping (Result<TimeInterval, Error>) -> Void) {
         // Silently drop taps when the photo output is saturated — avoids AVFoundation
         // capacity errors that would surface as "Cannot take photo" toasts during burst.
-        guard activeCaptures.count < Self.maxConcurrentCaptures else { return }
+        guard activeCaptures.count < Self.maxConcurrentCaptures else {
+            bumpRejected()
+            return
+        }
 
         let settings: AVCapturePhotoSettings
         let captureAsProRAW = useProRAW && isProRAWSupported && !isLivePhotoMode
@@ -331,6 +386,10 @@ class CameraManager: NSObject {
         // Register per-capture state keyed by the unique settings ID
         let context = CaptureContext(completion: completion)
         activeCaptures[settings.uniqueID] = context
+
+        // Reflect the capture in the carousel right away so the UI shows it
+        // as in-flight even before image data arrives.
+        addCarouselItem(CaptureItem(id: settings.uniqueID, status: .capturing))
 
         // Ensure the app stays alive in the background until this capture is saved
         beginBackgroundTaskIfNeeded()
@@ -371,6 +430,101 @@ class CameraManager: NSObject {
         UIApplication.shared.endBackgroundTask(backgroundTaskID)
         backgroundTaskID = .invalid
     }
+
+    // MARK: - Carousel state mutators (always on main)
+
+    /// Inserts a new carousel entry at the end and emits a snapshot.
+    private func addCarouselItem(_ item: CaptureItem) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.carouselItems[item.id] = item
+            self.carouselOrder.append(item.id)
+            self.emitSnapshotOnMain()
+        }
+    }
+
+    /// Mutates an existing carousel entry and emits a snapshot.
+    private func updateCarouselItem(_ id: Int64, _ mutate: @escaping (inout CaptureItem) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, var item = self.carouselItems[id] else { return }
+            mutate(&item)
+            self.carouselItems[id] = item
+            self.emitSnapshotOnMain()
+        }
+    }
+
+    /// Removes a carousel entry immediately (used to silently drop swallowed errors).
+    private func removeCarouselItem(_ id: Int64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pendingEvictions[id]?.cancel()
+            self.pendingEvictions.removeValue(forKey: id)
+            self.carouselItems.removeValue(forKey: id)
+            self.carouselOrder.removeAll { $0 == id }
+            self.emitSnapshotOnMain()
+        }
+    }
+
+    /// Schedules a carousel entry to fade out after `completedItemTTL` seconds.
+    private func scheduleCarouselEviction(_ id: Int64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pendingEvictions[id]?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                self.carouselItems.removeValue(forKey: id)
+                self.carouselOrder.removeAll { $0 == id }
+                self.pendingEvictions.removeValue(forKey: id)
+                self.emitSnapshotOnMain()
+            }
+            self.pendingEvictions[id] = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.completedItemTTL, execute: work)
+        }
+    }
+
+    /// Bumps the rejected counter and emits a snapshot.
+    private func bumpRejected() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.rejectedCount += 1
+            self.emitSnapshotOnMain()
+        }
+    }
+
+    /// Bumps the done counter and emits a snapshot.
+    private func bumpDone() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.doneCount += 1
+            self.emitSnapshotOnMain()
+        }
+    }
+
+    /// Builds and dispatches a snapshot. Must be called on main.
+    private func emitSnapshotOnMain() {
+        let items = carouselOrder.compactMap { carouselItems[$0] }
+        let snapshot = CaptureSnapshot(
+            inFlight: activeCaptures.count,
+            maxConcurrent: Self.maxConcurrentCaptures,
+            doneCount: doneCount,
+            rejectedCount: rejectedCount,
+            items: items
+        )
+        onCaptureUpdate?(snapshot)
+    }
+
+    /// Cheap thumbnail from a JPEG buffer using ImageIO's built-in downsampler.
+    /// No re-decode of the full image — pixel-size-bounded thumbnail extracted from the source.
+    fileprivate func makeThumbnail(from jpegData: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 220,
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
+    }
 }
 
 // MARK: - AVCapturePhotoCaptureDelegate
@@ -391,7 +545,14 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // Swallow AVFoundation hardware/capacity errors (e.g. "Cannot take photo"
             // when the photo output is momentarily saturated during rapid burst shooting).
             // These are expected under load and not meaningful to the user.
-            guard (error as NSError).domain != AVFoundationErrorDomain else { return }
+            guard (error as NSError).domain != AVFoundationErrorDomain else {
+                // Drop the carousel entry silently too — the user shouldn't see a
+                // "Failed" cell for an error we deliberately suppressed.
+                removeCarouselItem(captureID)
+                return
+            }
+            updateCarouselItem(captureID) { $0.status = .failed }
+            scheduleCarouselEviction(captureID)
             context.completion(.failure(error))
             return
         }
@@ -439,10 +600,21 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // so the reported duration measures processing+saving only,
             // not the burst queue wait before this photo's turn.
             context.processingStartTime = CFAbsoluteTimeGetCurrent()
+            let placeholderSize = data.count
+            updateCarouselItem(captureID) {
+                $0.placeholderSize = placeholderSize
+                $0.status = .finalizing
+            }
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else { return }
                 do {
                     let processedData = try ImageProcessor.processImage(data: data, isRAW: isRAW, metadata: metadata)
+                    let thumbnail = self.makeThumbnail(from: processedData)
+                    let finalSize = processedData.count
+                    self.updateCarouselItem(captureID) {
+                        $0.finalSize = finalSize
+                        $0.thumbnail = thumbnail
+                    }
                     PhotoSaver.save(imageData: processedData) { [weak self] result in
                         self?.completeCapture(captureID: captureID, result: result)
                     }
@@ -505,6 +677,11 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         // Stamp processing start time now that both pieces are ready and
         // actual work (content-ID read + image processing + save) begins.
         context.processingStartTime = CFAbsoluteTimeGetCurrent()
+        let placeholderSize = rawData.count
+        updateCarouselItem(captureID) {
+            $0.placeholderSize = placeholderSize
+            $0.status = .finalizing
+        }
 
         Task { [weak self] in
             let contentID = await VideoProcessor.readContentIdentifier(from: movieURL)
@@ -522,6 +699,12 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
                 let processedData = try ImageProcessor.processImage(
                     data: rawData, isRAW: isRAW, metadata: enrichedMetadata
                 )
+                let thumbnail = self.makeThumbnail(from: processedData)
+                let finalSize = processedData.count
+                self.updateCarouselItem(captureID) {
+                    $0.finalSize = finalSize
+                    $0.thumbnail = thumbnail
+                }
                 PhotoSaver.saveLivePhoto(imageData: processedData, movieURL: movieURL) { [weak self] result in
                     self?.cleanupTempFile(at: movieURL)
                     self?.completeCapture(captureID: captureID, result: result)
@@ -542,8 +725,13 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // individual photo, not burst queue wait time from earlier photos.
             let ref = context.processingStartTime > 0 ? context.processingStartTime : context.startTime
             let elapsed = CFAbsoluteTimeGetCurrent() - ref
+            bumpDone()
+            updateCarouselItem(captureID) { $0.status = .ready }
+            scheduleCarouselEviction(captureID)
             context.completion(.success(elapsed))
         case .failure(let error):
+            updateCarouselItem(captureID) { $0.status = .failed }
+            scheduleCarouselEviction(captureID)
             context.completion(.failure(error))
         }
         endBackgroundTaskIfDone()

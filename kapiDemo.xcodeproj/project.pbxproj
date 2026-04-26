@@ -20,6 +20,7 @@
 		AA00000A2F76C200008EAD28 /* 典雅绿调.cube in Resources */ = {isa = PBXBuildFile; fileRef = AA0000092F76C200008EAD28 /* 典雅绿调.cube */; };
 		AA00000D2F76C200008EAD28 /* FilteredPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */; };
 		AA00000F2F76C200008EAD28 /* VideoProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E2F76C200008EAD28 /* VideoProcessor.swift */; };
+		AA0000112F76C200008EAD28 /* CaptureItemCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000102F76C200008EAD28 /* CaptureItemCell.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 		AA00000B2F76C200008EAD28 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA00000C2F76C200008EAD28 /* FilteredPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilteredPreviewView.swift; sourceTree = "<group>"; };
 		AA00000E2F76C200008EAD28 /* VideoProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessor.swift; sourceTree = "<group>"; };
+		AA0000102F76C200008EAD28 /* CaptureItemCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureItemCell.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +117,7 @@
 				AA0000052F76C200008EAD28 /* ImageProcessor.swift */,
 				AA0000072F76C200008EAD28 /* PhotoSaver.swift */,
 				AA00000E2F76C200008EAD28 /* VideoProcessor.swift */,
+				AA0000102F76C200008EAD28 /* CaptureItemCell.swift */,
 				AA0000092F76C200008EAD28 /* 典雅绿调.cube */,
 				365729512F76C115008EAD28 /* Assets.xcassets */,
 				365729532F76C115008EAD28 /* Preview Content */,
@@ -285,6 +288,7 @@
 				AA0000062F76C200008EAD28 /* ImageProcessor.swift in Sources */,
 				AA0000082F76C200008EAD28 /* PhotoSaver.swift in Sources */,
 				AA00000F2F76C200008EAD28 /* VideoProcessor.swift in Sources */,
+				AA0000112F76C200008EAD28 /* CaptureItemCell.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
