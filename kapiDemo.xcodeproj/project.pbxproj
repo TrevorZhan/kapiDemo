@@ -462,6 +462,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access to capture ProRAW and standard photos.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app records audio for Live Photos.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This app saves processed photos to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app needs read/write access so it can swap a low-res placeholder photo for the full-resolution version after processing finishes.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -493,6 +494,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access to capture ProRAW and standard photos.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app records audio for Live Photos.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This app saves processed photos to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app needs read/write access so it can swap a low-res placeholder photo for the full-resolution version after processing finishes.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

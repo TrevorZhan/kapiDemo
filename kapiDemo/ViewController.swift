@@ -229,7 +229,7 @@ class ViewController: UIViewController {
         performanceLabel.layer.cornerRadius = 6
         performanceLabel.clipsToBounds = true
         performanceLabel.isUserInteractionEnabled = false
-        performanceLabel.text = "  CAP: –  Queue: –\n  FPS: –  CPU: –\n  MEM: –  Latency(capture): –\n  Latency(post): –  Jank: –\n  Thermal: –  Dropped: –  "
+        performanceLabel.text = "  CAP: –  Queue: –  FPS: –\n  CPU: –  MEM: –\n  Lat(ms): cap –  plc –  upg –\n  Jank: –  Dropped: –\n  Thermal: –  "
         view.addSubview(performanceLabel)
 
         // Toast label — floating overlay for capture timing
@@ -337,7 +337,8 @@ class ViewController: UIViewController {
             m.fps                = self.filteredPreview.currentFPS
             m.jankPercent        = self.filteredPreview.jankPercent
             m.captureLatencyMs   = self.cameraManager.lastCaptureLatencyMs
-            m.postLatencyMs      = self.cameraManager.lastPostLatencyMs
+            m.placeholderMs      = self.cameraManager.lastPlaceholderMs
+            m.upgradeMs          = self.cameraManager.lastUpgradeMs
             m.droppedFrames      = self.cameraManager.droppedFrames
             return m
         }
@@ -634,11 +635,11 @@ class ViewController: UIViewController {
 
     private func updatePerformanceLabel(_ m: PerformanceMetrics) {
         performanceLabel.text = """
-          CAP: \(m.cap)  Queue: \(m.queue)
-          FPS: \(String(format: "%.1f", m.fps))  CPU: \(String(format: "%.1f", m.cpuPercent))%
-          MEM: \(String(format: "%.0f", m.memoryMB))MB  Latency(capture): \(m.captureLatencyMs)ms
-          Latency(post): \(m.postLatencyMs)ms  Jank: \(String(format: "%.1f", m.jankPercent))%
-          Thermal: \(m.thermal.label)  Dropped: \(m.droppedFrames)
+          CAP: \(m.cap)  Queue: \(m.queue)  FPS: \(String(format: "%.1f", m.fps))
+          CPU: \(String(format: "%.1f", m.cpuPercent))%  MEM: \(String(format: "%.0f", m.memoryMB))MB
+          Lat(ms): cap \(m.captureLatencyMs)  plc \(m.placeholderMs)  upg \(m.upgradeMs)
+          Jank: \(String(format: "%.1f", m.jankPercent))%  Dropped: \(m.droppedFrames)
+          Thermal: \(m.thermal.label)
         """
     }
 

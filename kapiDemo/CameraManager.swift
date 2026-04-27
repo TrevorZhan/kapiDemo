@@ -353,9 +353,13 @@ class CameraManager: NSObject {
     /// Updated whenever a capture's image data is received.
     private(set) var lastCaptureLatencyMs: Int = 0
 
-    /// Milliseconds from image data arrival to Photos save completing.
-    /// Updated whenever a capture finishes successfully.
-    private(set) var lastPostLatencyMs: Int = 0
+    /// Milliseconds from image data arrival to placeholder save completing.
+    /// Phase 1 of the deferred-delivery pipeline.
+    private(set) var lastPlaceholderMs: Int = 0
+
+    /// Milliseconds from placeholder save completing to full-res upgrade completing.
+    /// Phase 2 of the deferred-delivery pipeline.
+    private(set) var lastUpgradeMs: Int = 0
 
     /// Running total of preview frames dropped by AVCaptureVideoDataOutput
     /// because they arrived faster than the app could process them.
@@ -612,33 +616,111 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             context.livePhotoMetadata = metadata
             finalizeLivePhotoIfReady(captureID: captureID)
         } else {
-            // Standard photo: process and save immediately.
-            // Stamp processing start time now — after image data arrives —
-            // so the reported duration measures processing+saving only,
-            // not the burst queue wait before this photo's turn.
+            // Standard photo: deferred-delivery pipeline.
+            //
+            // Phase 1: produce a small LUT-applied placeholder JPEG and save it
+            //          immediately so the gallery has something visible right away.
+            // Phase 2: process the full-resolution image with the LUT in the
+            //          background and replace the placeholder asset's resource
+            //          via PHContentEditingOutput. The asset's identity, creation
+            //          date, and place in the timeline are preserved — the user
+            //          observes the file size growing in place, mirroring the
+            //          system camera's behaviour.
+            //
+            // Stamp processing start time now so reported durations reflect only
+            // the per-photo work, not burst-queue wait time from earlier photos.
             context.processingStartTime = CFAbsoluteTimeGetCurrent()
             lastCaptureLatencyMs = Int((context.processingStartTime - context.startTime) * 1000)
-            let placeholderSize = data.count
-            updateCarouselItem(captureID) {
-                $0.placeholderSize = placeholderSize
+            runDeferredDelivery(captureID: captureID, data: data, isRAW: isRAW, metadata: metadata)
+        }
+    }
+
+    /// Two-phase save: low-res placeholder first, then content-editing upgrade
+    /// to full-res. Both phases run on a background queue. All failures funnel
+    /// through `completeCapture` so the carousel + completion handler see them.
+    private func runDeferredDelivery(
+        captureID: Int64,
+        data: Data,
+        isRAW: Bool,
+        metadata: [String: Any]
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            // Phase 1 — placeholder
+            let phase1Start = CFAbsoluteTimeGetCurrent()
+            let placeholderData: Data
+            do {
+                placeholderData = try ImageProcessor.processPlaceholder(
+                    data: data, isRAW: isRAW, metadata: metadata
+                )
+            } catch {
+                self.completeCapture(captureID: captureID, result: .failure(error))
+                return
+            }
+
+            let placeholderBytes = placeholderData.count
+            self.updateCarouselItem(captureID) {
+                $0.placeholderSize = placeholderBytes
                 $0.status = .finalizing
             }
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+
+            PhotoSaver.savePlaceholder(imageData: placeholderData) { [weak self] result in
                 guard let self = self else { return }
-                do {
-                    let processedData = try ImageProcessor.processImage(data: data, isRAW: isRAW, metadata: metadata)
-                    let thumbnail = self.makeThumbnail(from: processedData)
-                    let finalSize = processedData.count
-                    self.updateCarouselItem(captureID) {
-                        $0.finalSize = finalSize
-                        $0.thumbnail = thumbnail
-                    }
-                    PhotoSaver.save(imageData: processedData) { [weak self] result in
-                        self?.completeCapture(captureID: captureID, result: result)
-                    }
-                } catch {
+                switch result {
+                case .failure(let error):
                     self.completeCapture(captureID: captureID, result: .failure(error))
+                case .success(let localID):
+                    self.lastPlaceholderMs = Int((CFAbsoluteTimeGetCurrent() - phase1Start) * 1000)
+                    self.runUpgradePhase(
+                        captureID: captureID,
+                        localIdentifier: localID,
+                        data: data,
+                        isRAW: isRAW,
+                        metadata: metadata
+                    )
                 }
+            }
+        }
+    }
+
+    /// Phase 2 of deferred delivery: full-res LUT pass, then swap the placeholder
+    /// asset's resource for the final image via `PHContentEditingOutput`.
+    private func runUpgradePhase(
+        captureID: Int64,
+        localIdentifier: String,
+        data: Data,
+        isRAW: Bool,
+        metadata: [String: Any]
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            let phase2Start = CFAbsoluteTimeGetCurrent()
+            let processedData: Data
+            do {
+                processedData = try ImageProcessor.processImage(
+                    data: data, isRAW: isRAW, metadata: metadata
+                )
+            } catch {
+                self.completeCapture(captureID: captureID, result: .failure(error))
+                return
+            }
+
+            let thumbnail = self.makeThumbnail(from: processedData)
+            let finalBytes = processedData.count
+            self.updateCarouselItem(captureID) {
+                $0.finalSize = finalBytes
+                $0.thumbnail = thumbnail
+            }
+
+            PhotoSaver.upgradePhoto(
+                localIdentifier: localIdentifier,
+                finalData: processedData
+            ) { [weak self] result in
+                guard let self = self else { return }
+                self.lastUpgradeMs = Int((CFAbsoluteTimeGetCurrent() - phase2Start) * 1000)
+                self.completeCapture(captureID: captureID, result: result)
             }
         }
     }
@@ -744,7 +826,6 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             // individual photo, not burst queue wait time from earlier photos.
             let ref = context.processingStartTime > 0 ? context.processingStartTime : context.startTime
             let elapsed = CFAbsoluteTimeGetCurrent() - ref
-            lastPostLatencyMs = Int(elapsed * 1000)
             bumpDone()
             updateCarouselItem(captureID) { $0.status = .ready }
             scheduleCarouselEviction(captureID)

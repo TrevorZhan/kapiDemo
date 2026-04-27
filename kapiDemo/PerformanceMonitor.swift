@@ -26,8 +26,12 @@ struct PerformanceMetrics {
     var memoryMB: Double = 0
     /// Milliseconds from shutter tap to image data arriving (last completed capture).
     var captureLatencyMs: Int = 0
-    /// Milliseconds from image data arrival to Photos save completing (last capture).
-    var postLatencyMs: Int = 0
+    /// Milliseconds from image data arrival to placeholder save completing.
+    /// Phase 1 of the deferred-delivery pipeline.
+    var placeholderMs: Int = 0
+    /// Milliseconds from placeholder save completing to full-res upgrade completing.
+    /// Phase 2 of the deferred-delivery pipeline.
+    var upgradeMs: Int = 0
     /// Device thermal state.
     var thermal: ProcessInfo.ThermalState = .nominal
     /// Total video preview frames dropped since the session started.
