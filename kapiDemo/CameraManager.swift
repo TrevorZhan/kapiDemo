@@ -747,23 +747,16 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             return
         }
 
-        // Apply LUT to the video, then store the processed URL
-        VideoProcessor.applyLUT(to: outputFileURL) { [weak self] processedURL in
-            guard let self = self else { return }
-            // Clean up the original unprocessed movie
-            self.cleanupTempFile(at: outputFileURL)
-
-            if let processedURL = processedURL {
-                context.livePhotoMovieURL = processedURL
-            } else {
-                self.completeCapture(captureID: captureID, result: .failure(CameraError.livePhotoVideoProcessingFailed))
-                return
-            }
-            self.finalizeLivePhotoIfReady(captureID: captureID)
-        }
+        // Defer video LUT processing to the upgrade phase. Hand the un-LUT'd
+        // movie straight to the placeholder save — `PHLivePhotoEditingContext`
+        // re-encodes the video with the LUT applied later, off the shutter
+        // critical path.
+        context.livePhotoMovieURL = outputFileURL
+        finalizeLivePhotoIfReady(captureID: captureID)
     }
 
-    /// Called after each Live Photo piece (still + video) arrives. Saves when both are ready.
+    /// Called after each Live Photo piece (still + video) arrives. Kicks off
+    /// the deferred-delivery pipeline once both are present.
     private func finalizeLivePhotoIfReady(captureID: Int64) {
         guard let context = activeCaptures[captureID],
               let rawData = context.livePhotoRawData,
@@ -775,20 +768,45 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         let isRAW = context.livePhotoIsRAW
 
         // Stamp processing start time now that both pieces are ready and
-        // actual work (content-ID read + image processing + save) begins.
+        // actual work begins.
         context.processingStartTime = CFAbsoluteTimeGetCurrent()
         lastCaptureLatencyMs = Int((context.processingStartTime - context.startTime) * 1000)
-        let placeholderSize = rawData.count
         updateCarouselItem(captureID) {
-            $0.placeholderSize = placeholderSize
             $0.status = .finalizing
         }
 
+        runLiveDeferredDelivery(
+            captureID: captureID,
+            rawData: rawData,
+            isRAW: isRAW,
+            metadata: metadata,
+            movieURL: movieURL
+        )
+    }
+
+    /// Two-phase Live Photo save. Mirror of `runDeferredDelivery` for stills.
+    ///
+    /// Phase 1: produce a small LUT-applied still (full display dims, `.up`
+    ///          orientation) with the video's content identifier embedded,
+    ///          and save it paired with the un-LUT'd source movie. The
+    ///          shutter is freed as soon as this returns.
+    /// Phase 2: process the full-res still and apply LUT to the video via
+    ///          `PHLivePhotoEditingContext`, replacing both resources on the
+    ///          existing asset.
+    private func runLiveDeferredDelivery(
+        captureID: Int64,
+        rawData: Data,
+        isRAW: Bool,
+        metadata: [String: Any],
+        movieURL: URL
+    ) {
         Task { [weak self] in
+            // Read content ID from the un-LUT'd movie so the placeholder still
+            // can be paired with it. Must happen before the placeholder save
+            // moves the file into Photos' storage.
             let contentID = await VideoProcessor.readContentIdentifier(from: movieURL)
             guard let self = self else { return }
 
-            // Embed the content identifier into the JPEG metadata so it matches the video
             var enrichedMetadata = metadata
             if let contentID = contentID {
                 var makerApple = enrichedMetadata[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any] ?? [:]
@@ -796,23 +814,83 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
                 enrichedMetadata[kCGImagePropertyMakerAppleDictionary as String] = makerApple
             }
 
+            // Phase 1 — placeholder still + un-LUT'd video
+            let phase1Start = CFAbsoluteTimeGetCurrent()
+            let placeholderData: Data
             do {
-                let processedData = try ImageProcessor.processImage(
+                placeholderData = try ImageProcessor.processPlaceholder(
                     data: rawData, isRAW: isRAW, metadata: enrichedMetadata
                 )
-                let thumbnail = self.makeThumbnail(from: processedData)
-                let finalSize = processedData.count
-                self.updateCarouselItem(captureID) {
-                    $0.finalSize = finalSize
-                    $0.thumbnail = thumbnail
-                }
-                PhotoSaver.saveLivePhoto(imageData: processedData, movieURL: movieURL) { [weak self] result in
-                    self?.cleanupTempFile(at: movieURL)
-                    self?.completeCapture(captureID: captureID, result: result)
-                }
             } catch {
                 self.cleanupTempFile(at: movieURL)
                 self.completeCapture(captureID: captureID, result: .failure(error))
+                return
+            }
+
+            let placeholderBytes = placeholderData.count
+            self.updateCarouselItem(captureID) {
+                $0.placeholderSize = placeholderBytes
+            }
+
+            PhotoSaver.saveLivePhotoPlaceholder(imageData: placeholderData, movieURL: movieURL) { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .failure(let error):
+                    // shouldMoveFile only consumes the file on success; clean up on failure.
+                    self.cleanupTempFile(at: movieURL)
+                    self.completeCapture(captureID: captureID, result: .failure(error))
+                case .success(let localID):
+                    self.lastPlaceholderMs = Int((CFAbsoluteTimeGetCurrent() - phase1Start) * 1000)
+                    self.runLiveUpgradePhase(
+                        captureID: captureID,
+                        localIdentifier: localID,
+                        rawData: rawData,
+                        isRAW: isRAW,
+                        metadata: enrichedMetadata
+                    )
+                }
+            }
+        }
+    }
+
+    /// Phase 2 of the Live Photo pipeline: render the full-res LUT'd still and
+    /// hand it to `PhotoSaver.upgradeLivePhoto`, which replaces both resources
+    /// of the placeholder asset via `PHLivePhotoEditingContext`.
+    private func runLiveUpgradePhase(
+        captureID: Int64,
+        localIdentifier: String,
+        rawData: Data,
+        isRAW: Bool,
+        metadata: [String: Any]
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            let phase2Start = CFAbsoluteTimeGetCurrent()
+            let processedData: Data
+            do {
+                processedData = try ImageProcessor.processImage(
+                    data: rawData, isRAW: isRAW, metadata: metadata
+                )
+            } catch {
+                self.completeCapture(captureID: captureID, result: .failure(error))
+                return
+            }
+
+            let thumbnail = self.makeThumbnail(from: processedData)
+            let finalBytes = processedData.count
+            self.updateCarouselItem(captureID) {
+                $0.finalSize = finalBytes
+                $0.thumbnail = thumbnail
+            }
+
+            PhotoSaver.upgradeLivePhoto(
+                localIdentifier: localIdentifier,
+                finalImageData: processedData
+            ) { [weak self] result in
+                guard let self = self else { return }
+                self.lastUpgradeMs = Int((CFAbsoluteTimeGetCurrent() - phase2Start) * 1000)
+                self.completeCapture(captureID: captureID, result: result)
             }
         }
     }
